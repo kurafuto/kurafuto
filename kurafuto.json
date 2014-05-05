@@ -1,0 +1,21 @@
+{
+	"verify-names": true,
+	"heartbeat": true,
+	"parse-packets": true,
+	"name": "Foo Bar [Kurafuto]",
+	"motd": "Welcome to Foo Bar! +ophax",
+	"address": "0.0.0.0",
+	"port": 25565,
+	"servers": [
+		{
+			"name": "Server_A",
+			"address": "10.0.0.1",
+			"port": 25565
+		},
+		{
+			"name": "Server_B",
+			"address": "10.0.0.2",
+			"port": 25566
+		}
+	]
+}
