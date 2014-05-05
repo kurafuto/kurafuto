@@ -1,19 +1,19 @@
 package main
 
 import (
-	"flag"
 	"errors"
+	"flag"
+	"fmt"
 	"log"
 	"net"
-	"fmt"
 )
 
 type Kurafuto struct {
-	Players []Player
-	Hub *Server
-	Config *Config
+	Players  []*Player
+	Hub      *Server
+	Config   *Config
 	Listener net.Listener
-	Done chan bool
+	Done     chan bool
 }
 
 func (ku *Kurafuto) Quit() {
@@ -28,19 +28,37 @@ func (ku *Kurafuto) Run() {
 			log.Fatal(err)
 		}
 
-		Debugf("New connection: %s", c.RemoteAddr().String())
-
 		p, err := NewPlayer(c, ku)
 		if err != nil {
 			c.Close()
 			continue
 		}
+		log.Printf("New connection from %s (%d clients)", c.RemoteAddr().String(), len(ku.Players))
+		Debugf("[%s] New connection from %s", p.Id, c.RemoteAddr().String())
+
+		ku.Players = append(ku.Players, p)
 		if ku.Config.Parse {
 			go p.Parse()
 		} else {
 			go p.Proxy()
 		}
 	}
+}
+
+func (ku *Kurafuto) Remove(p *Player) bool {
+	for i, player := range ku.Players {
+		if player != p {
+			continue
+		}
+		p.Quit() // just in case
+		// Remove and zero player to allow GC to collect it.
+		copy(ku.Players[i:], ku.Players[i+1:])
+		ku.Players[len(ku.Players)-1] = nil
+		ku.Players = ku.Players[:len(ku.Players)-1]
+		log.Printf("%s disconnected", p.Client.RemoteAddr().String())
+		Debugf("[%s] Disconnected %s from slot %d", p.Id, p.Client.RemoteAddr().String(), i)
+	}
+	return false
 }
 
 func NewKurafuto(config *Config) (ku *Kurafuto, err error) {
@@ -55,17 +73,17 @@ func NewKurafuto(config *Config) (ku *Kurafuto, err error) {
 	}
 
 	ku = &Kurafuto{
-		Players: []Player{},
-		Hub: &config.Servers[0],
-		Config: config,
+		Players:  []*Player{},
+		Hub:      &config.Servers[0],
+		Config:   config,
 		Listener: listener,
-		Done: make(chan bool, 1),
+		Done:     make(chan bool, 1),
 	}
 	return
 }
 
 var (
-	Ku *Kurafuto
+	Ku    *Kurafuto
 	debug bool
 )
 
@@ -73,7 +91,7 @@ func Debugf(s string, v ...interface{}) {
 	if !debug {
 		return
 	}
-	log.Printf(s, v...)
+	log.Printf("[DEBUG] "+s, v...)
 }
 
 func main() {
