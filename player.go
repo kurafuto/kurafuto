@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/dchest/uniuri"
 	"github.com/sysr-q/kyubu/packets"
-	_ "github.com/sysr-q/kyubu/packets/cpe"
+	_ "github.com/sysr-q/kyubu/cpe"
 	"io"
 	"log"
 	"net"
