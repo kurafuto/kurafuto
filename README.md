@@ -3,6 +3,12 @@ Kurafuto (クラフト)
 
 Minecraft Classic load balancer, similar to nginx or BungeeCord (hopefully!).
 
+This is __definitely__ pre-release software, so it will probably go through sweeping
+changes every few commits, and may: crash, _"accidentally"_ lose packets,
+eat your pets, or burn down your house if you look at it wrong. You've been warned.
+
+What I'm saying is, __don't use this in production yet.__
+
 ## Topology
 
 Ideally, this would act as a transparent proxy, acting more as a gateway/hub
@@ -74,14 +80,6 @@ and the edge balancer will heartbeat on the behalf of the servers.
 This is still _TODO_, and exactly how it will work is currently TBA.
 
 ## Roadmap
-
-Right now, the balancer _"works"_ (in quotation marks), but is definitely not
-feature complete. There are going to be bugs, and it will probably crash a whole
-lot, but that's how software works, right?
-
-This is __definitely__ pre-release software, so it might go through sweeping
-changes every few commits, and may: crash, burn, _accidentally_ lose packets,
-eat your pets, and potentially burn down your house. You've been warned.
 
 Things to work on:
 

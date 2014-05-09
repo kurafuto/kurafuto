@@ -4,14 +4,23 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/dchest/uniuri"
 	"log"
 	"net"
+	"sync"
 )
 
 type Kurafuto struct {
-	Players  []*Player
-	Hub      *Server
-	Config   *Config
+	Players []*Player
+	mutex   sync.Mutex
+
+	salt string
+	Name string
+	Motd string
+
+	Hub    *Server
+	Config *Config
+
 	Listener net.Listener
 	Done     chan bool
 }
@@ -33,10 +42,11 @@ func (ku *Kurafuto) Run() {
 			c.Close()
 			continue
 		}
+		ku.Players = append(ku.Players, p)
+
 		log.Printf("New connection from %s (%d clients)", c.RemoteAddr().String(), len(ku.Players))
 		Debugf("[%s] New connection from %s", p.Id, c.RemoteAddr().String())
 
-		ku.Players = append(ku.Players, p)
 		if ku.Config.Parse {
 			go p.Parse()
 		} else {
@@ -46,6 +56,8 @@ func (ku *Kurafuto) Run() {
 }
 
 func (ku *Kurafuto) Remove(p *Player) bool {
+	ku.mutex.Lock()
+	defer ku.mutex.Unlock()
 	for i, player := range ku.Players {
 		if player != p {
 			continue
@@ -55,8 +67,9 @@ func (ku *Kurafuto) Remove(p *Player) bool {
 		copy(ku.Players[i:], ku.Players[i+1:])
 		ku.Players[len(ku.Players)-1] = nil
 		ku.Players = ku.Players[:len(ku.Players)-1]
-		log.Printf("%s disconnected", p.Client.RemoteAddr().String())
+		log.Printf("%s (%s) disconnected", p.Name, p.Client.RemoteAddr().String())
 		Debugf("[%s] Disconnected %s from slot %d", p.Id, p.Client.RemoteAddr().String(), i)
+		return true
 	}
 	return false
 }
@@ -74,6 +87,8 @@ func NewKurafuto(config *Config) (ku *Kurafuto, err error) {
 
 	ku = &Kurafuto{
 		Players:  []*Player{},
+		mutex:    sync.Mutex{},
+		salt:     uniuri.New(),
 		Hub:      &config.Servers[0],
 		Config:   config,
 		Listener: listener,
@@ -110,7 +125,7 @@ func main() {
 	}
 
 	log.Printf("Kurafuto now listening on %s:%d with %d servers", config.Address, config.Port, len(config.Servers))
-	Debugf("Debugging enabled!")
+	Debugf("Debugging enabled! (Salt: %s)", Ku.salt)
 
 	go Ku.Run()
 	<-Ku.Done
