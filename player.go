@@ -6,17 +6,15 @@ import (
 	"fmt"
 	"github.com/dchest/uniuri"
 	"github.com/sysr-q/kyubu/packets"
-	_ "github.com/sysr-q/kyubu/cpe"
-	"io"
 	"log"
 	"net"
 	"time"
 )
 
-type State int
+type PlayerState int
 
 const (
-	Dead State = iota
+	Dead PlayerState = iota
 	Identification
 	Idle
 )
@@ -29,13 +27,13 @@ func compareHash(salt, name, mpPass string) bool {
 	h.Write([]byte(salt))
 	h.Write([]byte(name))
 	sum := fmt.Sprintf("%x", h.Sum(nil))
-	Debugf("salt:%s name:%s mpPass:%s sum:%s", salt, name, mpPass, sum)
 	return subtle.ConstantTimeCompare([]byte(sum), []byte(mpPass)) == 1
 }
 
 type Player struct {
 	Id   string
 	Name string // From 0x00 Identification packet
+	CPE  bool   // Does this player support CPE?
 
 	Client   net.Conn       // Client <-> Balancer
 	client   packets.Parser // C <-> B
@@ -45,10 +43,14 @@ type Player struct {
 	server   packets.Parser // B <-> S
 	toServer chan packets.Packet
 
-	State          State
+	State          PlayerState
 	quit, quitting bool
 	hub            string
 	ku             *Kurafuto
+}
+
+func (p *Player) Remote() string {
+	return p.Client.RemoteAddr().String()
 }
 
 func (p *Player) Quit() {
@@ -57,7 +59,7 @@ func (p *Player) Quit() {
 	}
 	p.quitting = true
 	p.State = Dead
-	Debugf("[%s] Remove(p) == %v", p.Id, p.ku.Remove(p))
+	Debugf(1, "[%s] Remove(p) == %v", p.Id, p.ku.Remove(p))
 	go func() {
 		// Wait a second to write any packets still in the queue.
 		time.Sleep(1 * time.Second)
@@ -98,7 +100,7 @@ func (p *Player) readParse(parser packets.Parser, to chan packets.Packet) {
 	for !p.quit {
 		packet, err := parser.Next()
 		if packet == nil || err != nil {
-			Debugf("[%s] readParse(): packet:%+v, err:%#v", p.Id, packet, err)
+			Debugf(1, "[%s] readParse(): packet:%+v, err:%#v", p.Id, packet, err)
 			p.Quit()
 			return
 		}
@@ -111,20 +113,26 @@ func (p *Player) writeParse(pack <-chan packets.Packet, conn net.Conn) {
 	for !p.quit {
 		packet := <-pack
 		if packet == nil {
-			Debugf("[%s] writeParse(): nil packet", p.Id)
+			Debugf(1, "[%s] writeParse(): nil packet", p.Id)
 			p.Quit()
 			return
 		}
-		Debugf("[%s] -> Packet %#.2x [%s]", p.Id, packet.Id(), packets.Packets[packet.Id()].Name)
+
+		if Dropp(packet) {
+			Packetf("Dropped", p.Id, packet)
+			continue
+		}
+
+		Packetf("->", p.Id, packet)
 
 		n, err := conn.Write(packet.Bytes())
 		if err != nil {
-			Debugf("[%s] writeParse(): conn.Write err: %#v", p.Id, err)
+			Debugf(1, "[%s] writeParse(): conn.Write err: %#v", p.Id, err)
 			p.Quit()
 			return
 		}
 		if n != packet.Size() {
-			Debugf("[%s] Packet %#.2x is %d bytes, but %d was written", p.Id, packet.Id(), packet.Size(), n)
+			Debugf(1, "[%s] Packet %#.2x is %d bytes, but %d was written", p.Id, packet.Id(), packet.Size(), n)
 		}
 	}
 }
@@ -135,17 +143,17 @@ func (p *Player) Parse() {
 	if !p.Dial() {
 		return
 	}
-	Debugf("[%s] Dialed %s!", p.Id, p.Server.RemoteAddr().String())
+	Debugf(1, "[%s] Dialed %s!", p.Id, p.Server.RemoteAddr().String())
 	p.client = packets.NewParser(p.Client)
 	p.server = packets.NewParser(p.Server)
 
 	// We handle authentication here if it's enabled, otherwise we just
 	// pull out the username from the initial Identification packet.
 	packet, err := p.client.Next()
-	Debugf("[%s] %#v", p.Id, packet)
 	if packet == nil || err != nil || packet.Id() != 0x00 {
 		// 0x00 = Identification
-		Debugf("[%s] !ident: packet:%#v err:%#v", packet, err)
+		log.Printf("%s didn't send an ident.", p.Remote())
+		Debugf(1, "[%s] !ident: packet:%#v err:%#v", packet, err)
 		p.Quit()
 		return
 	}
@@ -159,9 +167,10 @@ func (p *Player) Parse() {
 	var ident *packets.Identification
 	ident = packet.(*packets.Identification)
 	p.Name = ident.Name
+	p.CPE = ident.UserType == 0x42 // Magic value for CPE
 
 	if p.ku.Config.Authenticate && !compareHash(p.ku.salt, p.Name, ident.KeyMotd) {
-		log.Printf("[%s] Connected, but didn't verify for %s", p.Client.RemoteAddr().String(), p.Name)
+		log.Printf("[%s] Connected, but didn't verify for %s", p.Remote(), p.Name)
 		disc, err := packets.NewDisconnectPlayer("Name wasn't verified!")
 		if err != nil {
 			p.Quit()
@@ -172,35 +181,9 @@ func (p *Player) Parse() {
 		return
 	}
 
-	// Now we can pass it along to the server.
+	// Now we can start to pass things along to the server.
 	go p.readParse(p.server, p.toClient)  // B <- S
 	go p.writeParse(p.toServer, p.Server) // B -> S
-}
-
-func (p *Player) proxyCopy(in io.Reader, out io.Writer) {
-	for !p.quit {
-		n, err := io.Copy(out, in)
-		if err != nil {
-			p.Quit()
-			return
-		}
-		if n == 0 {
-			p.Quit()
-			return
-		}
-
-		Debugf("[%s] Copied %d", p.Id, n)
-	}
-}
-
-func (p *Player) Proxy() {
-	if !p.Dial() {
-		return
-	}
-	// We're ignorant to states aside from Idle and Dead.
-	p.State = Idle
-	go p.proxyCopy(p.Client, p.Server) // C -> B -> S
-	go p.proxyCopy(p.Server, p.Client) // S -> B -> C
 }
 
 func NewPlayer(c net.Conn, ku *Kurafuto) (p *Player, err error) {

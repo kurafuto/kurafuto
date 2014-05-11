@@ -1,117 +1,59 @@
 package main
 
 import (
-	"errors"
 	"flag"
-	"fmt"
-	"github.com/dchest/uniuri"
+	"github.com/sysr-q/kyubu/cpe"
+	"github.com/sysr-q/kyubu/packets"
 	"log"
-	"net"
-	"sync"
 )
-
-type Kurafuto struct {
-	Players []*Player
-	mutex   sync.Mutex
-
-	salt string
-	Name string
-	Motd string
-
-	Hub    *Server
-	Config *Config
-
-	Listener net.Listener
-	Done     chan bool
-}
-
-func (ku *Kurafuto) Quit() {
-	ku.Done <- true
-	ku.Listener.Close()
-}
-
-func (ku *Kurafuto) Run() {
-	for {
-		c, err := ku.Listener.Accept()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		p, err := NewPlayer(c, ku)
-		if err != nil {
-			c.Close()
-			continue
-		}
-		ku.Players = append(ku.Players, p)
-
-		log.Printf("New connection from %s (%d clients)", c.RemoteAddr().String(), len(ku.Players))
-		Debugf("[%s] New connection from %s", p.Id, c.RemoteAddr().String())
-
-		if ku.Config.Parse {
-			go p.Parse()
-		} else {
-			go p.Proxy()
-		}
-	}
-}
-
-func (ku *Kurafuto) Remove(p *Player) bool {
-	ku.mutex.Lock()
-	defer ku.mutex.Unlock()
-	for i, player := range ku.Players {
-		if player != p {
-			continue
-		}
-		p.Quit() // just in case
-		// Remove and zero player to allow GC to collect it.
-		copy(ku.Players[i:], ku.Players[i+1:])
-		ku.Players[len(ku.Players)-1] = nil
-		ku.Players = ku.Players[:len(ku.Players)-1]
-		log.Printf("%s (%s) disconnected", p.Name, p.Client.RemoteAddr().String())
-		Debugf("[%s] Disconnected %s from slot %d", p.Id, p.Client.RemoteAddr().String(), i)
-		return true
-	}
-	return false
-}
-
-func NewKurafuto(config *Config) (ku *Kurafuto, err error) {
-	if len(config.Servers) < 1 {
-		err = errors.New("kurafuto: Need at least 1 server in config.")
-		return
-	}
-
-	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", config.Address, config.Port))
-	if err != nil {
-		return
-	}
-
-	ku = &Kurafuto{
-		Players:  []*Player{},
-		mutex:    sync.Mutex{},
-		salt:     uniuri.New(),
-		Hub:      &config.Servers[0],
-		Config:   config,
-		Listener: listener,
-		Done:     make(chan bool, 1),
-	}
-	return
-}
 
 var (
-	Ku    *Kurafuto
-	debug bool
+	Ku        *Kurafuto
+	verbosity int
 )
 
-func Debugf(s string, v ...interface{}) {
-	if !debug {
+////////////////////
+func Debugf(level int, s string, v ...interface{}) {
+	if verbosity < level {
 		return
 	}
 	log.Printf("[DEBUG] "+s, v...)
 }
 
+func Packetf(action, id string, p packets.Packet) {
+	for _, id := range Ku.Config.Ignore {
+		if id != p.Id() {
+			continue
+		}
+		return
+	}
+	Debugf(1, "[%s] %s Packet %#.2x [%s]", id, action, p.Id(), packets.Packets[p.Id()].Name)
+}
+
+func Dropp(p packets.Packet) bool {
+	for _, id := range Ku.Config.Drop {
+		if id != p.Id() {
+			continue
+		}
+		return true
+	}
+	if ep, ok := p.(cpe.ExtPacket); ok {
+		for _, ext := range Ku.Config.DropExts {
+			if ext != ep.String() {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
-	var configFile = flag.String("config", "kurafuto.json", "the file your Kurafuto configuration is stored in.")
-	flag.BoolVar(&debug, "debug", false, "enable verbose debugging.")
+	var (
+		configFile = flag.String("config", "kurafuto.json", "the file your Kurafuto configuration is stored in.")
+		forceSalt  = flag.String("forceSalt", "", "force a specific salt to be used (don't do this!)")
+	)
+	flag.IntVar(&verbosity, "v", 0, "Debugging verbosity level.")
 	flag.Parse()
 
 	config, err := NewConfigFile(*configFile)
@@ -123,9 +65,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if *forceSalt != "" {
+		Ku.salt = *forceSalt
+	}
 
 	log.Printf("Kurafuto now listening on %s:%d with %d servers", config.Address, config.Port, len(config.Servers))
-	Debugf("Debugging enabled! (Salt: %s)", Ku.salt)
+	Debugf(1, "Debugging level %d enabled! (Salt: %s)", verbosity, Ku.salt)
+	Debugf(1, "Ignoring these packets: %s", config.Ignore.String())
+	Debugf(1, "Dropping these packets: %s", config.Drop.String())
+	Debugf(1, "Dropping these extensions: %s", config.DropExts)
 
 	go Ku.Run()
 	<-Ku.Done

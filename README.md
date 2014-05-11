@@ -4,8 +4,8 @@ Kurafuto (クラフト)
 Minecraft Classic load balancer, similar to nginx or BungeeCord (hopefully!).
 
 This is __definitely__ pre-release software, so it will probably go through sweeping
-changes every few commits, and may: crash, _"accidentally"_ lose packets,
-eat your pets, or burn down your house if you look at it wrong. You've been warned.
+changes every few commits, and may: crash, _"accidentally"_ lose packets, eat
+your pets, or burn down your house if you look at it wrong. You've been warned.
 
 What I'm saying is, __don't use this in production yet.__
 
@@ -27,6 +27,8 @@ server in a linked network of servers. Think nginx, but Minecraft Classic.
 Clients: 1, 2, 3                 Servers: A, B, C
 ```
 
+******
+
 Due to the lack of a signaling packet that the balancer and servers can use to
 indicate a server redirection, how servers _actually indicate_ the balancer's
 connection should change from _Server A_ to _Server B_ is currently TBA.
@@ -39,34 +41,22 @@ When a client connects to the balancer, the balancer will make a connection on
 the behalf of the client to one of the linked servers, and proxy packets back
 and forth between the two.
 
-## Proxy modes
+## Proxying
 
-Currently, there are two _"modes"_ of operation:
+Kurafuto makes use of [Kyubu](https://github.com/sysr-q/kyubu) to parse packets
+out of the client and server streams. This allows the balancer to do things like
+injecting extra packets, dropping specific packets, or modifying packets
+on-the-fly as they pass through.
 
-* __Parsing__ mode will parse packets out of the stream from the client, then
-  forwards these to the server. The same is done for packets from the server.
-  This allows the balancer to potentially inject extra packets or modify packets
-  on-the-fly as they pass through.
-* __Non-parsing__ mode simply reads everything out of the client stream, and
-  pushes it straight on to the server. The same is done in the other direction.
-  This mode is non-supportive of authentication and (currently) any plans for
-  redirection (which is no fun!).
-
-If you enable authentication, Kurafuto is forced into parsing mode. There is no
-way around this.
+This does mean, however, that any unrecognised packets will be an issue - if
+there's a custom packet you want to recognise, be sure to register it with Kyubu
+(which is quite simple), and Kurafuto will pass it through just fine.
 
 ## Authentication
 
-This could work in a few ways:
-
-* The servers (_A_, _B_, _C_, ...) handle their own authentication individually.
-  They'd have to use a specific salt used by the balancer, however, otherwise
-  clients might be able to connect to _A_, but not to _B_.
-* The servers disable authentication (`verify-names=false`), and the balancer
-  handles authentication at the edge.
-
-The latter seems like the more reasonable solution currently, so that's what
-will be implemented in pre-release versions.
+Authentication (if enabled: `"authentication": true`) is handled at the edge by
+the balancer. This means that servers will have to disable their authentication
+and throttling limitations.
 
 Given that only valid connections will be coming from the edge balancer, and
 the servers will have authentication disabled, it would make sense for the
@@ -74,7 +64,7 @@ servers to be configured to blacklist connections from anyone but the balancer.
 
 ## Heartbeats
 
-The servers should disable their heartbeating (making them "private" servers),
+The servers should disable their heartbeating (making them "private"/"hidden"),
 and the edge balancer will heartbeat on the behalf of the servers.
 
 This is still _TODO_, and exactly how it will work is currently TBA.
@@ -83,13 +73,12 @@ This is still _TODO_, and exactly how it will work is currently TBA.
 
 Things to work on:
 
-* ~~Parse proxy mode~~ - works, minus authentication
-* ~~Raw proxy mode~~ - seems functional, I haven't run into any issues.
+* ~~Parse proxy mode~~ - mostly works, there are some odd issues with LevelDataChunk packets.
 * Handle `SIGHUP` to reload configuration (preferably without disconnecting clients)
 * Heartbeats
     * Just ClassiCube?
-* Authentication (requires parse mode so it's not hellish)
-    * Just Classicube?
+* ~~Authentication (requires parse mode so it's not hellish)~~
+    * ClassiCube authentication is supported.
 * Forwarding on the "real" IP in an `X-Forwarded-For` manner. Might try to get
   an extra packet into the CPE spec.
 * There's a slight delay when users connect where the balancer dials to the hub
