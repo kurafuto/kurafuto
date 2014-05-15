@@ -64,8 +64,12 @@ func (p *Player) Quit() {
 		// Wait a second to write any packets still in the queue.
 		time.Sleep(1 * time.Second)
 		p.quit = true
-		p.Client.Close()
-		p.Server.Close()
+		if p.Client != nil {
+			p.Client.Close()
+		}
+		if p.Server != nil {
+			p.Server.Close()
+		}
 		close(p.toClient)
 		close(p.toServer)
 	}()
@@ -75,6 +79,7 @@ func (p *Player) Quit() {
 func (p *Player) Dial() bool {
 	server, err := net.Dial("tcp", p.hub)
 	if err != nil {
+		log.Printf("Unable to dial remote server: %s (%s)", p.hub, err.Error())
 		p.Quit()
 		return false
 	}

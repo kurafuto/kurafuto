@@ -45,8 +45,7 @@ and forth between the two.
 
 Kurafuto makes use of [Kyubu](https://github.com/sysr-q/kyubu) to parse packets
 out of the client and server streams. This allows the balancer to do things like
-injecting extra packets, dropping specific packets, or modifying packets
-on-the-fly as they pass through.
+inject, drop, or modify packets on-the-fly as they pass through.
 
 This does mean, however, that any unrecognised packets will be an issue - if
 there's a custom packet you want to recognise, be sure to register it with Kyubu
