@@ -13,22 +13,6 @@ var (
 )
 
 ////////////////////
-func Debugf(level int, s string, v ...interface{}) {
-	if verbosity < level {
-		return
-	}
-	log.Printf("[DEBUG] "+s, v...)
-}
-
-func Packetf(action, id string, p packets.Packet) {
-	for _, id := range Ku.Config.Ignore {
-		if id != p.Id() {
-			continue
-		}
-		return
-	}
-	Debugf(1, "[%s] %s Packet %#.2x [%s]", id, action, p.Id(), packets.Packets[p.Id()].Name)
-}
 
 func Dropp(p packets.Packet) bool {
 	for _, id := range Ku.Config.Drop {
@@ -49,10 +33,8 @@ func Dropp(p packets.Packet) bool {
 }
 
 func main() {
-	var (
-		configFile = flag.String("config", "kurafuto.json", "the file your Kurafuto configuration is stored in.")
-		forceSalt  = flag.String("forceSalt", "", "force a specific salt to be used (don't do this!)")
-	)
+	configFile := flag.String("config", "kurafuto.json", "the file your Kurafuto configuration is stored in.")
+	forceSalt := flag.String("forceSalt", "", "force a specific salt to be used (don't do this!)")
 	flag.IntVar(&verbosity, "v", 0, "Debugging verbosity level.")
 	flag.Parse()
 
@@ -61,20 +43,28 @@ func main() {
 		log.Fatal(err)
 	}
 
-	Ku, err := NewKurafuto(config)
+	ku, err := NewKurafuto(config)
 	if err != nil {
 		log.Fatal(err)
 	}
 	if *forceSalt != "" {
-		Ku.salt = *forceSalt
+		ku.salt = *forceSalt
 	}
 
-	log.Printf("Kurafuto now listening on %s:%d with %d servers", config.Address, config.Port, len(config.Servers))
-	Debugf(1, "Debugging level %d enabled! (Salt: %s)", verbosity, Ku.salt)
-	Debugf(1, "Ignoring these packets: %s", config.Ignore.String())
-	Debugf(1, "Dropping these packets: %s", config.Drop.String())
-	Debugf(1, "Dropping these extensions: %s", config.DropExts)
+	Ku = ku // Make it global.
 
-	go Ku.Run()
-	<-Ku.Done
+	Infof("Kurafuto now listening on %s:%d with %d servers", config.Address, config.Port, len(config.Servers))
+	Debugf("Debugging level %d enabled! (Salt: %s)", verbosity, Ku.salt)
+	if len(config.Ignore) > 0 {
+		Debugf("Ignoring these packets: %s", config.Ignore.String())
+	}
+	if len(config.Drop) > 0 {
+		Debugf("Dropping these packets: %s", config.Drop.String())
+	}
+	if len(config.DropExts) > 0 {
+		Debugf("Dropping these extensions: %s", config.DropExts)
+	}
+
+	go ku.Run()
+	<-ku.Done
 }

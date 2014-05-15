@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/dchest/uniuri"
 	"github.com/sysr-q/kyubu/packets"
-	"log"
 	"net"
 	"time"
 )
@@ -35,12 +34,12 @@ type Player struct {
 	Name string // From 0x00 Identification packet
 	CPE  bool   // Does this player support CPE?
 
-	Client   net.Conn       // Client <-> Balancer
-	client   packets.Parser // C <-> B
+	Client   net.Conn // Client <-> Balancer
+	client   *Parser  // C <-> B
 	toClient chan packets.Packet
 
-	Server   net.Conn       // Balancer <-> Server
-	server   packets.Parser // B <-> S
+	Server   net.Conn // Balancer <-> Server
+	server   *Parser  // B <-> S
 	toServer chan packets.Packet
 
 	State          PlayerState
@@ -59,11 +58,15 @@ func (p *Player) Quit() {
 	}
 	p.quitting = true
 	p.State = Dead
-	Debugf(1, "[%s] Remove(p) == %v", p.Id, p.ku.Remove(p))
+	Debugf("(%s) Remove(p) == %v", p.Id, p.ku.Remove(p))
 	go func() {
 		// Wait a second to write any packets still in the queue.
 		time.Sleep(1 * time.Second)
 		p.quit = true
+		p.client.Disable = true
+		p.client.UnregisterAll()
+		p.server.Disable = true
+		p.server.UnregisterAll()
 		if p.Client != nil {
 			p.Client.Close()
 		}
@@ -79,7 +82,7 @@ func (p *Player) Quit() {
 func (p *Player) Dial() bool {
 	server, err := net.Dial("tcp", p.hub)
 	if err != nil {
-		log.Printf("Unable to dial remote server: %s (%s)", p.hub, err.Error())
+		Infof("(%s) Unable to dial remote server: %s (%s)", p.Id, p.hub, err.Error())
 		p.Quit()
 		return false
 	}
@@ -104,8 +107,11 @@ func (p *Player) readParse(parser packets.Parser, to chan packets.Packet) {
 
 	for !p.quit {
 		packet, err := parser.Next()
+		if err == ErrPacketSkipped {
+			continue
+		}
 		if packet == nil || err != nil {
-			Debugf(1, "[%s] readParse(): packet:%+v, err:%#v", p.Id, packet, err)
+			Debugf("(%s) readParse(): packet:%+v, err:%#v", p.Id, packet, err)
 			p.Quit()
 			return
 		}
@@ -118,26 +124,26 @@ func (p *Player) writeParse(pack <-chan packets.Packet, conn net.Conn) {
 	for !p.quit {
 		packet := <-pack
 		if packet == nil {
-			Debugf(1, "[%s] writeParse(): nil packet", p.Id)
+			Debugf("(%s) writeParse(): nil packet", p.Id)
 			p.Quit()
 			return
 		}
 
 		if Dropp(packet) {
-			Packetf("Dropped", p.Id, packet)
+			DebugPacket(p.Id, "dropped", packet)
 			continue
 		}
 
-		Packetf("->", p.Id, packet)
+		DebugPacket(p.Id, "->", packet)
 
 		n, err := conn.Write(packet.Bytes())
 		if err != nil {
-			Debugf(1, "[%s] writeParse(): conn.Write err: %#v", p.Id, err)
+			Debugf("(%s) writeParse(): conn.Write err: %#v", p.Id, err)
 			p.Quit()
 			return
 		}
 		if n != packet.Size() {
-			Debugf(1, "[%s] Packet %#.2x is %d bytes, but %d was written", p.Id, packet.Id(), packet.Size(), n)
+			Debugf("(%s) Packet %#.2x is %d bytes, but %d was written", p.Id, packet.Id(), packet.Size(), n)
 		}
 	}
 }
@@ -148,17 +154,19 @@ func (p *Player) Parse() {
 	if !p.Dial() {
 		return
 	}
-	Debugf(1, "[%s] Dialed %s!", p.Id, p.Server.RemoteAddr().String())
-	p.client = packets.NewParser(p.Client)
-	p.server = packets.NewParser(p.Server)
+	Debugf("(%s) Dialed %s!", p.Id, p.Server.RemoteAddr().String())
+	p.client = NewParser(p, packets.NewParser(p.Client), FromClient).(*Parser)
+	p.server = NewParser(p, packets.NewParser(p.Server), FromServer).(*Parser)
+	p.client.Register(packets.Message{}, LogMessage)
+	p.server.Register(packets.Message{}, LogMessage)
 
 	// We handle authentication here if it's enabled, otherwise we just
 	// pull out the username from the initial Identification packet.
 	packet, err := p.client.Next()
 	if packet == nil || err != nil || packet.Id() != 0x00 {
 		// 0x00 = Identification
-		log.Printf("%s didn't send an ident.", p.Remote())
-		Debugf(1, "[%s] !ident: packet:%#v err:%#v", packet, err)
+		Infof("%s didn't identify correctly.", p.Remote())
+		Debugf("(%s) !ident: packet:%#v err:%#v", p.Id, packet, err)
 		p.Quit()
 		return
 	}
@@ -175,7 +183,7 @@ func (p *Player) Parse() {
 	p.CPE = ident.UserType == 0x42 // Magic value for CPE
 
 	if p.ku.Config.Authenticate && !compareHash(p.ku.salt, p.Name, ident.KeyMotd) {
-		log.Printf("[%s] Connected, but didn't verify for %s", p.Remote(), p.Name)
+		Infof("(%s) Connected, but didn't verify for %s", p.Remote(), p.Name)
 		disc, err := packets.NewDisconnectPlayer("Name wasn't verified!")
 		if err != nil {
 			p.Quit()

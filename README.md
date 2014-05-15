@@ -34,8 +34,9 @@ indicate a server redirection, how servers _actually indicate_ the balancer's
 connection should change from _Server A_ to _Server B_ is currently TBA.
 
 Ideas include a custom [CPE](http://wiki.vg/Classic_Protocol_Extension) packet,
-or some special chat message, which would be used as a sentinel of sorts.
-Obviously, a CPE packet would be the preferred method, but we'll see.
+some special chat message used as a sentinel of sorts, or a user-triggered command.
+Obviously, a CPE packet would be the preferred method, but that'd require lots
+of effort, and who wants that..?
 
 When a client connects to the balancer, the balancer will make a connection on
 the behalf of the client to one of the linked servers, and proxy packets back
@@ -88,3 +89,4 @@ Things to work on:
       so we'll have to try out a few and see how they work. Will we buffer some
       packets (namely, `Identification`, `ExtInfo`, `ExtEntry`) and push those
       on to the new server?
+    * A custom client command seems like a decent idea. Easy to intercept as well.

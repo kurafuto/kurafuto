@@ -43,8 +43,8 @@ func (ku *Kurafuto) Run() {
 		}
 		ku.Players = append(ku.Players, p)
 
-		log.Printf("New connection from %s (%d clients)", c.RemoteAddr().String(), len(ku.Players))
-		Debugf(1, "[%s] New connection from %s", p.Id, c.RemoteAddr().String())
+		Infof("New connection from %s (%d clients)", c.RemoteAddr().String(), len(ku.Players))
+		Debugf("(%s) New connection from %s", p.Id, c.RemoteAddr().String())
 
 		go p.Parse()
 	}
@@ -62,8 +62,8 @@ func (ku *Kurafuto) Remove(p *Player) bool {
 		copy(ku.Players[i:], ku.Players[i+1:])
 		ku.Players[len(ku.Players)-1] = nil
 		ku.Players = ku.Players[:len(ku.Players)-1]
-		log.Printf("%s (%s) disconnected", p.Name, p.Client.RemoteAddr().String())
-		Debugf(1, "[%s] Disconnected %s from slot %d", p.Id, p.Client.RemoteAddr().String(), i)
+		Infof("%s (%s) disconnected", p.Name, p.Client.RemoteAddr().String())
+		Debugf("(%s) Disconnected %s from slot %d", p.Id, p.Client.RemoteAddr().String(), i)
 		return true
 	}
 	return false
