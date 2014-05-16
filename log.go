@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/mgutz/ansi"
-	"github.com/sysr-q/kyubu/packets"
 	"log"
 	"regexp"
 )
@@ -45,30 +44,20 @@ func Colorify(in string) string {
 	return string(repl) + resetColor
 }
 
+func Verbosef(s string, v ...interface{}) {
+	if verbosity < 2 {
+		return
+	}
+	Debugf(s, v...)
+}
+
 func Debugf(s string, v ...interface{}) {
 	if verbosity < 1 {
 		return
 	}
-	log.Printf("[DBUG]"+s, v...)
+	log.Printf("[DBUG] "+s, v...)
 }
 
 func Infof(s string, v ...interface{}) {
 	log.Printf(s, v...)
-}
-
-func DebugPacket(id, action string, p packets.Packet) {
-	if Ku == nil || Ku.Config == nil {
-		return
-	}
-	for _, id := range Ku.Config.Ignore {
-		if id != p.Id() {
-			continue
-		}
-		return
-	}
-	name := "Unknown"
-	if info, ok := packets.Packets[p.Id()]; ok {
-		name = info.Name
-	}
-	Debugf("(%s) %s packet %#.2x (%s)", id, action, p.Id(), name)
 }

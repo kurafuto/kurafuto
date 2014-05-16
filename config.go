@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -60,10 +61,31 @@ func (p *commaString) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + strings.Join(*p, ",") + `"`), nil
 }
 
+var identRegexp = regexp.MustCompile(`^[a-zA-Z_-][a-zA-Z0-9_-]*$`)
+
+// ident is a string that must match the regex: /^[a-zA-Z_-][a-zA-Z0-9_-]*$/
+type ident string
+
+func (p *ident) UnmarshalJSON(data []byte) error {
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+	if m := identRegexp.FindStringIndex(str); m == nil {
+		return fmt.Errorf("%q is not a valid identifier", str)
+	}
+	*p = ident(str)
+	return nil
+}
+
+func (p *ident) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + *p + `"`), nil
+}
+
 ////////////////////
 
 type Server struct {
-	Name    string `json:"name"`
+	Name    ident  `json:"name"`
 	Address string `json:"address"`
 	Port    int    `json:"port"`
 }

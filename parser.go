@@ -11,6 +11,15 @@ var ErrPacketSkipped = errors.New("kurafuto: Packet skipped")
 
 type HookDirection int
 
+func (h HookDirection) String() string {
+	if h == FromClient {
+		return "C->S"
+	} else if h == FromServer {
+		return "S->C"
+	}
+	return "?->?"
+}
+
 const (
 	FromClient HookDirection = iota
 	FromServer
@@ -24,6 +33,21 @@ type Hook func(*Player, HookDirection, packets.Packet) bool
 type hookInfo struct {
 	Id string
 	F  Hook
+}
+
+// AllPackets is a special sentinel type that allows registration of hooks run
+// on every packet received by a hooked Parser. It may break things if there is
+// a packet registered with `Id() == 0xff`.
+type AllPackets struct {
+}
+func (p AllPackets) Id() byte {
+	return 0xff
+}
+func (p AllPackets) Size() int {
+	return 1
+}
+func (p AllPackets) Bytes() []byte {
+	return []byte{0xff}
 }
 
 // Parser is a wrapper implementation of a Kyubu packets.Parser, which allows
@@ -51,11 +75,26 @@ func (p *Parser) Next() (packets.Packet, error) {
 		return packet, err
 	}
 
-	if hooks, ok := p.hooks[packet.Id()]; ok {
-		for _, hook := range hooks {
+	skipPacket := func(h []hookInfo) bool {
+		for _, hook := range h {
 			if skip := hook.F(p.player, p.Direction, packet); skip {
-				return packet, ErrPacketSkipped
+				return true
 			}
+		}
+		return false
+	}
+
+	// Run AllPacket hooks first
+	if hooks, ok := p.hooks[0xff]; ok {
+		if skip := skipPacket(hooks); skip {
+			return packet, ErrPacketSkipped
+		}
+	}
+
+	// Regular hooks for this packet
+	if hooks, ok := p.hooks[packet.Id()]; ok {
+		if skip := skipPacket(hooks); skip {
+			return packet, ErrPacketSkipped
 		}
 	}
 

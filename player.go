@@ -129,13 +129,6 @@ func (p *Player) writeParse(pack <-chan packets.Packet, conn net.Conn) {
 			return
 		}
 
-		if Dropp(packet) {
-			DebugPacket(p.Id, "dropped", packet)
-			continue
-		}
-
-		DebugPacket(p.Id, "->", packet)
-
 		n, err := conn.Write(packet.Bytes())
 		if err != nil {
 			Debugf("(%s) writeParse(): conn.Write err: %#v", p.Id, err)
@@ -159,6 +152,10 @@ func (p *Player) Parse() {
 	p.server = NewParser(p, packets.NewParser(p.Server), FromServer).(*Parser)
 	p.client.Register(packets.Message{}, LogMessage)
 	p.server.Register(packets.Message{}, LogMessage)
+	p.client.Register(AllPackets{}, DebugPacket)
+	p.server.Register(AllPackets{}, DebugPacket)
+	p.client.Register(AllPackets{}, DropPacket)
+	p.server.Register(AllPackets{}, DropPacket)
 
 	// We handle authentication here if it's enabled, otherwise we just
 	// pull out the username from the initial Identification packet.

@@ -52,6 +52,10 @@ This does mean, however, that any unrecognised packets will be an issue - if
 there's a custom packet you want to recognise, be sure to register it with Kyubu
 (which is quite simple), and Kurafuto will pass it through just fine.
 
+Note, though, that the packet id `0xff` is given special meaning: it's used to
+register packet handlers which listen for _any_ packet. This might be an issue
+if your packet uses that id.
+
 ## Authentication
 
 Authentication (if enabled: `"authentication": true`) is handled at the edge by

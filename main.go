@@ -2,8 +2,6 @@ package main
 
 import (
 	"flag"
-	"github.com/sysr-q/kyubu/cpe"
-	"github.com/sysr-q/kyubu/packets"
 	"log"
 )
 
@@ -13,24 +11,6 @@ var (
 )
 
 ////////////////////
-
-func Dropp(p packets.Packet) bool {
-	for _, id := range Ku.Config.Drop {
-		if id != p.Id() {
-			continue
-		}
-		return true
-	}
-	if ep, ok := p.(cpe.ExtPacket); ok {
-		for _, ext := range Ku.Config.DropExts {
-			if ext != ep.String() {
-				continue
-			}
-			return true
-		}
-	}
-	return false
-}
 
 func main() {
 	configFile := flag.String("config", "kurafuto.json", "the file your Kurafuto configuration is stored in.")
