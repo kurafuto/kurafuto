@@ -60,8 +60,8 @@ func (p *Player) Quit() {
 	p.State = Dead
 	Debugf("(%s) Remove(p) == %v", p.Id, p.ku.Remove(p))
 	go func() {
-		// Wait a second to write any packets still in the queue.
-		time.Sleep(1 * time.Second)
+		// Wait a bit to write any packets still in the queue.
+		time.Sleep(300 * time.Millisecond)
 		p.quit = true
 		p.client.Disable = true
 		p.client.UnregisterAll()
@@ -150,12 +150,15 @@ func (p *Player) Parse() {
 	Debugf("(%s) Dialed %s!", p.Id, p.Server.RemoteAddr().String())
 	p.client = NewParser(p, packets.NewParser(p.Client), FromClient).(*Parser)
 	p.server = NewParser(p, packets.NewParser(p.Server), FromServer).(*Parser)
-	p.client.Register(packets.Message{}, LogMessage)
-	p.server.Register(packets.Message{}, LogMessage)
+	//	p.client.Register(packets.Message{}, LogMessage)
+	//	p.server.Register(packets.Message{}, LogMessage)
+	// General hooks to drop/debug log packets first.
 	p.client.Register(AllPackets{}, DebugPacket)
 	p.server.Register(AllPackets{}, DebugPacket)
 	p.client.Register(AllPackets{}, DropPacket)
 	p.server.Register(AllPackets{}, DropPacket)
+
+	p.client.Register(packets.Message{}, EdgeCommand)
 
 	// We handle authentication here if it's enabled, otherwise we just
 	// pull out the username from the initial Identification packet.

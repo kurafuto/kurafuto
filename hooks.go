@@ -2,13 +2,17 @@ package main
 
 import (
 	"fmt"
-	"github.com/sysr-q/kyubu/packets"
 	"github.com/sysr-q/kyubu/cpe"
+	"github.com/sysr-q/kyubu/packets"
 	"log"
+	"strings"
 )
 
 // LogMessage is an example hook function that simply logs all message packets
 // that pass through Kurafuto. It's not that interesting, honestly.
+//
+//   parser := NewParser(...)
+//   parser.Register(AllPackets{}, LogMessage)
 func LogMessage(p *Player, dir HookDirection, packet packets.Packet) bool {
 	var msg *packets.Message
 	msg = packet.(*packets.Message)
@@ -65,4 +69,27 @@ func DebugPacket(p *Player, dir HookDirection, packet packets.Packet) (drop bool
 	}
 	Verbosef("(%s) %s; %s packet %#.2x [%s]", p.Id, p.Name, dir.String(), packet.Id(), name)
 	return
+}
+
+func EdgeCommand(p *Player, dir HookDirection, packet packets.Packet) (drop bool) {
+	if dir != FromClient || Ku == nil || Ku.Config == nil || !Ku.Config.EdgeCommands {
+		return
+	}
+
+	var bits []string
+
+	if msg, ok := packet.(*packets.Message); ok {
+		bits = strings.Split(msg.Message, " ")
+	} else {
+		return
+	}
+
+	if len(bits) < 1 || bits[0] != ":kura" {
+		return
+	}
+
+	// TODO: Check bits[1] for sub command.
+	msg, _ := packets.NewMessage(127, "&5Kurafuto wuz here!")
+	p.toClient <- msg
+	return true
 }

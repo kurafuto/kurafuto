@@ -3,12 +3,34 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 var (
 	Ku        *Kurafuto
 	verbosity int
 )
+
+func sigintQuit(c <-chan os.Signal) {
+	<-c
+	if Ku == nil {
+		return
+	}
+	log.Println("Shutting down!")
+	Ku.Quit()
+}
+
+func sighupReload(c <-chan os.Signal) {
+	for {
+		<-c
+		if Ku == nil {
+			return
+		}
+		log.Println("Should reload config now, but that isn't implemented.")
+	}
+}
 
 ////////////////////
 
@@ -44,6 +66,14 @@ func main() {
 	if len(config.DropExts) > 0 {
 		Debugf("Dropping these extensions: %s", config.DropExts)
 	}
+
+	sigint := make(chan os.Signal, 1)
+	signal.Notify(sigint, os.Interrupt, syscall.SIGTERM)
+	go sigintQuit(sigint)
+
+	sighup := make(chan os.Signal, 3)
+	signal.Notify(sighup, syscall.SIGHUP)
+	go sighupReload(sighup)
 
 	go ku.Run()
 	<-ku.Done

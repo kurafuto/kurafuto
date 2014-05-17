@@ -40,6 +40,7 @@ type hookInfo struct {
 // a packet registered with `Id() == 0xff`.
 type AllPackets struct {
 }
+
 func (p AllPackets) Id() byte {
 	return 0xff
 }

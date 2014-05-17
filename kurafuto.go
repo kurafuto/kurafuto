@@ -7,6 +7,8 @@ import (
 	"log"
 	"net"
 	"sync"
+	"github.com/sysr-q/kyubu/packets"
+	"time"
 )
 
 type Kurafuto struct {
@@ -22,17 +24,31 @@ type Kurafuto struct {
 
 	Listener net.Listener
 	Done     chan bool
+	Running  bool
 }
 
 func (ku *Kurafuto) Quit() {
-	ku.Done <- true
+	ku.Running = false
+	for _, p := range ku.Players {
+		disc, _ := packets.NewDisconnectPlayer("Server shutting down.")
+		p.toClient <- disc
+		p.Quit()
+	}
 	ku.Listener.Close()
+	// TODO: `while len(ku.Players) > 0 {}`?
+	go func() {
+		time.Sleep(2 * time.Second)
+		ku.Done <- true
+	}()
 }
 
 func (ku *Kurafuto) Run() {
-	for {
+	ku.Running = true
+	for ku.Running {
 		c, err := ku.Listener.Accept()
-		if err != nil {
+		if err != nil && !ku.Running {
+			break
+		} else if err != nil {
 			log.Fatal(err)
 		}
 
