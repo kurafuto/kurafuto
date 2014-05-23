@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+// packetList is special JSON type that turns a string of hexadecimal ids into
+// a []byte slice. As the name implies, it is used to signal lists of packets.
 type packetList []byte
 
 func (p *packetList) String() string {
@@ -46,6 +48,8 @@ func (p *packetList) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + strings.Join(b, ",") + `"`), nil
 }
 
+// commaString is a special JSON type that turns a comma delimited list of strings
+// into a []string slice (and vice versa).
 type commaString []string
 
 func (p *commaString) UnmarshalJSON(data []byte) error {
@@ -63,7 +67,7 @@ func (p *commaString) MarshalJSON() ([]byte, error) {
 
 var identRegexp = regexp.MustCompile(`^[a-zA-Z_-][a-zA-Z0-9_-]*$`)
 
-// ident is a string that must match the regex: /^[a-zA-Z_-][a-zA-Z0-9_-]*$/
+// ident is a JSON string that MUST match the regex: /^[a-zA-Z_-][a-zA-Z0-9_-]*$/
 type ident string
 
 func (p *ident) UnmarshalJSON(data []byte) error {

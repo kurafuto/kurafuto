@@ -36,7 +36,7 @@ func sighupReload(c <-chan os.Signal) {
 
 func main() {
 	configFile := flag.String("config", "kurafuto.json", "the file your Kurafuto configuration is stored in.")
-	forceSalt := flag.String("forceSalt", "", "force a specific salt to be used (don't do this!)")
+	//forceSalt := flag.String("forceSalt", "", "force a specific salt to be used (don't do this!)")
 	flag.IntVar(&verbosity, "v", 0, "Debugging verbosity level.")
 	flag.Parse()
 
@@ -49,9 +49,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if *forceSalt != "" {
+
+	/*if *forceSalt != "" {
 		ku.salt = *forceSalt
-	}
+	}*/
 
 	Ku = ku // Make it global.
 
