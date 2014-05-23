@@ -158,7 +158,9 @@ func (p *Player) Parse() {
 	p.client.Register(AllPackets{}, DropPacket)
 	p.server.Register(AllPackets{}, DropPacket)
 
-	p.client.Register(packets.Message{}, EdgeCommand)
+	if p.ku.Config.EdgeCommands {
+		p.client.Register(packets.Message{}, EdgeCommand)
+	}
 
 	// We handle authentication here if it's enabled, otherwise we just
 	// pull out the username from the initial Identification packet.
