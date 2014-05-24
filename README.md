@@ -28,7 +28,7 @@ $ cp $GOPATH/github.com/sysr-q/kurafuto/kurafuto.json .
 
 # Modify the configuration to your liking & run!
 $ vim kurafuto.json
-$ ./kurafuto -config="$(pwd)/kurafuto.json"
+$ kurafuto -config="$(pwd)/kurafuto.json"
 ```
 
 ## Topology
