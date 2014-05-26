@@ -25,26 +25,49 @@ type Kurafuto struct {
 	Listener net.Listener
 	Done     chan bool
 	Running  bool
+
+	rMut sync.Mutex
 }
 
 func (ku *Kurafuto) Quit() {
+	ku.rMut.Lock()
+	if !ku.Running {
+		ku.rMut.Unlock()
+		return
+	}
+
 	ku.Running = false
+	ku.rMut.Unlock()
+
+	// So we don't take on any new players.
+	ku.Listener.Close()
+
 	for _, p := range ku.Players {
 		disc, _ := packets.NewDisconnectPlayer("Server shutting down.")
 		p.toClient <- disc
 		p.Quit()
 	}
-	ku.Listener.Close()
-	// TODO: `while len(ku.Players) > 0 {}`?
+
 	go func() {
+		// TODO: `while len(ku.Players) > 0 {}`?
 		time.Sleep(2 * time.Second)
 		ku.Done <- true
 	}()
 }
 
 func (ku *Kurafuto) Run() {
+	ku.rMut.Lock()
 	ku.Running = true
-	for ku.Running {
+	ku.rMut.Unlock()
+
+	for {
+		ku.rMut.Lock()
+		if !ku.Running {
+			ku.rMut.Unlock()
+			break
+		}
+		ku.rMut.Unlock()
+
 		c, err := ku.Listener.Accept()
 		if err != nil && !ku.Running {
 			break
@@ -78,8 +101,12 @@ func (ku *Kurafuto) Remove(p *Player) bool {
 		copy(ku.Players[i:], ku.Players[i+1:])
 		ku.Players[len(ku.Players)-1] = nil
 		ku.Players = ku.Players[:len(ku.Players)-1]
-		Infof("%s (%s) disconnected", p.Name, p.Client.RemoteAddr().String())
-		Debugf("(%s) Disconnected %s from slot %d", p.Id, p.Client.RemoteAddr().String(), i)
+		f := "%s (%s) disconnected"
+		if p.Name == "" {
+			f = "%s(%s) disconnected"
+		}
+		Infof(f, p.Name, p.Client.RemoteAddr().String())
+		Debugf("(%s) %s disconnected from slot %d", p.Id, p.Client.RemoteAddr().String(), i)
 		return true
 	}
 	return false
@@ -104,6 +131,8 @@ func NewKurafuto(config *Config) (ku *Kurafuto, err error) {
 		Config:   config,
 		Listener: listener,
 		Done:     make(chan bool, 1),
+
+		rMut: sync.Mutex{},
 	}
 	return
 }

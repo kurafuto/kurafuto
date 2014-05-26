@@ -5,9 +5,15 @@ import (
 	"fmt"
 	"github.com/dchest/uniuri"
 	"github.com/sysr-q/kyubu/packets"
+	"time"
+	"net"
+	"sync"
 )
 
-var ErrPacketSkipped = errors.New("kurafuto: Packet skipped")
+var (
+	ErrPacketSkipped = errors.New("kurafuto: Packet skipped")
+	ErrParserFinished = errors.New("kurafuto: Parser finished (timed out)")
+)
 
 type HookDirection int
 
@@ -53,20 +59,62 @@ func (p AllPackets) Bytes() []byte {
 
 // Parser is a wrapper implementation of a Kyubu packets.Parser, which allows
 // function hooks to be run when specific packets are parsed out of the stream.
+// It also allows read timeouts, where if a packet isn't received in the specified
+// time, the parser is "finished", and will stop consuming packets.
 type Parser struct {
 	player    *Player
+	conn net.Conn
 	parser    packets.Parser
 	hooks     map[byte][]hookInfo
 	Direction HookDirection
 	Disable   bool // Allows all hooks to be bypassed.
+
+	finished bool
+	mutex sync.Mutex
+	Timeout time.Duration
+}
+
+func (p *Parser) Finish() {
+	if p == nil {
+		return
+	}
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.finished = true
 }
 
 // Next returns the next packet parsed out of the internal parser, and fires any
 // hooks related to this packet type. If any of the hooks return "handled", Next
 // will return `kurafuto.ErrPacketSkipped`. Users of the parser are expected to
-// re-call Next.
+// re-call Next. If the parser is "finished", or times out it will return
+// `kurafuto.ErrParserFinished` forever.
 func (p *Parser) Next() (packets.Packet, error) {
+	if p == nil {
+		return nil, ErrParserFinished
+	}
+
+	p.mutex.Lock()
+	if p.finished {
+		p.mutex.Unlock()
+		return nil, ErrParserFinished
+	}
+	p.mutex.Unlock()
+
+	// Force a deadline, this means if we don't get a response in the given
+	// time, we can consider the parser "finished".
+	p.conn.SetReadDeadline(time.Now().Add(p.Timeout))
+
 	packet, err := p.parser.Next()
+
+	if e, ok := err.(net.Error); ok && e.Timeout() {
+		p.Finish()
+		return nil, ErrParserFinished
+	}
+
+	// An empty Time{} indicates removing the read deadline. I think.
+	// It's what Go's net/timeout_test.go does, so whatever.
+	p.conn.SetReadDeadline(time.Time{})
+
 	if packet == nil {
 		return packet, err
 	}
@@ -131,11 +179,14 @@ func (p *Parser) UnregisterAll() {
 	p.hooks = make(map[byte][]hookInfo)
 }
 
-func NewParser(player *Player, parser packets.Parser, dir HookDirection) packets.Parser {
+func NewParser(player *Player, conn net.Conn, dir HookDirection, t time.Duration) packets.Parser {
 	return &Parser{
 		player:    player,
-		parser:    parser,
+		conn: conn,
+		parser:    packets.NewParser(conn),
 		hooks:     make(map[byte][]hookInfo),
 		Direction: dir,
+		mutex: sync.Mutex{},
+		Timeout: t,
 	}
 }

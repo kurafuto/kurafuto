@@ -8,6 +8,7 @@ import (
 	"github.com/sysr-q/kyubu/packets"
 	"net"
 	"time"
+	"sync"
 )
 
 type PlayerState int
@@ -32,7 +33,7 @@ func compareHash(salt, name, mpPass string) bool {
 type Player struct {
 	Id   string
 	Name string // From 0x00 Identification packet
-	CPE  bool   // Does this player support CPE?
+	CPE  bool   // Does this player claim CPE support?
 
 	Client   net.Conn // Client <-> Balancer
 	client   *Parser  // C <-> B
@@ -46,6 +47,8 @@ type Player struct {
 	quit, quitting bool
 	hub            string
 	ku             *Kurafuto
+
+	qMutex sync.Mutex
 }
 
 func (p *Player) Remote() string {
@@ -53,20 +56,40 @@ func (p *Player) Remote() string {
 }
 
 func (p *Player) Quit() {
+	p.qMutex.Lock()
 	if p.quit || p.quitting {
+		p.qMutex.Unlock()
 		return
 	}
+
 	p.quitting = true
+	p.qMutex.Unlock()
+
 	p.State = Dead
 	Debugf("(%s) Remove(p) == %v", p.Id, p.ku.Remove(p))
+
 	go func() {
 		// Wait a bit to write any packets still in the queue.
 		time.Sleep(300 * time.Millisecond)
+
+		p.qMutex.Lock()
 		p.quit = true
-		p.client.Disable = true
-		p.client.UnregisterAll()
-		p.server.Disable = true
-		p.server.UnregisterAll()
+		p.qMutex.Unlock()
+
+		p.client.Finish()
+		p.server.Finish()
+
+		// p.client and p.server might be nil if we hit an error whilst
+		// dialing the remote.
+		if p.client != nil {
+			p.client.Disable = true
+			p.client.UnregisterAll()
+		}
+		if p.server != nil {
+			p.server.Disable = true
+			p.server.UnregisterAll()
+		}
+
 		if p.Client != nil {
 			p.Client.Close()
 		}
@@ -82,7 +105,8 @@ func (p *Player) Quit() {
 func (p *Player) Dial() bool {
 	server, err := net.Dial("tcp", p.hub)
 	if err != nil {
-		Infof("(%s) Unable to dial remote server: %s (%s)", p.Id, p.hub, err.Error())
+		Infof("(%s) Unable to dial hub: %s", p.Remote(), p.hub)
+		Debugf("(%s) Unable to dial remote server: %s (%s)", p.Id, p.hub, err.Error())
 		p.Quit()
 		return false
 	}
@@ -100,13 +124,24 @@ func (p *Player) Redirect(address string, port int) error {
 func (p *Player) readParse(parser packets.Parser, to chan packets.Packet) {
 	defer func() {
 		err := recover()
-		if !p.quit && err != nil {
-			panic(err)
+		if err == nil {
+			return
 		}
+
+		p.qMutex.Lock()
+		defer p.qMutex.Unlock()
+		if p.quit || p.quitting {
+			return
+		}
+		panic(err) // Like the mutex matters now..
 	}()
 
-	for !p.quit {
+	for {
 		packet, err := parser.Next()
+		if err == ErrParserFinished {
+			break
+		}
+
 		if err == ErrPacketSkipped {
 			continue
 		}
@@ -121,10 +156,16 @@ func (p *Player) readParse(parser packets.Parser, to chan packets.Packet) {
 }
 
 func (p *Player) writeParse(pack <-chan packets.Packet, conn net.Conn) {
-	for !p.quit {
-		packet := <-pack
-		if packet == nil {
-			Debugf("(%s) writeParse(): nil packet", p.Id)
+	defer func() {
+		if err := recover(); !p.quitting && err != nil {
+			panic(err)
+		}
+	}()
+
+	for {
+		packet, ok := <-pack
+		if packet == nil || !ok {
+			Debugf("(%s) writeParse(): nil packet? ok:%v", p.Id, ok)
 			p.Quit()
 			return
 		}
@@ -148,10 +189,12 @@ func (p *Player) Parse() {
 		return
 	}
 	Debugf("(%s) Dialed %s!", p.Id, p.Server.RemoteAddr().String())
-	p.client = NewParser(p, packets.NewParser(p.Client), FromClient).(*Parser)
-	p.server = NewParser(p, packets.NewParser(p.Server), FromServer).(*Parser)
-	//	p.client.Register(packets.Message{}, LogMessage)
-	//	p.server.Register(packets.Message{}, LogMessage)
+
+	t := 2 * time.Second // TODO: Higher, lower? Notchian does 2-3s.
+	p.client = NewParser(p, p.Client, FromClient, t).(*Parser)
+	p.server = NewParser(p, p.Server, FromServer, t).(*Parser)
+	//p.client.Register(packets.Message{}, LogMessage)
+	//p.server.Register(packets.Message{}, LogMessage)
 	// General hooks to drop/debug log packets first.
 	p.client.Register(AllPackets{}, DebugPacket)
 	p.server.Register(AllPackets{}, DebugPacket)
@@ -162,9 +205,26 @@ func (p *Player) Parse() {
 		p.client.Register(packets.Message{}, EdgeCommand)
 	}
 
-	// We handle authentication here if it's enabled, otherwise we just
-	// pull out the username from the initial Identification packet.
+	// So we can shove packets down the pipe about identification.
+	go p.readParse(p.client, p.toServer)  // C -> B
+	go p.writeParse(p.toClient, p.Client) // C <- B
+
 	packet, err := p.client.Next()
+
+	// This might indicate a read timeout, so just in case we shove down a
+	// DisconnectPlayer packet and kill their connections.
+	if err == ErrParserFinished {
+		Infof("(%s) Connected, but didn't send anything in time.", p.Remote())
+		disc, err := packets.NewDisconnectPlayer("You need to log in!")
+		if err != nil {
+			p.Quit()
+			return
+		}
+		p.toClient <- disc
+		p.Quit()
+		return
+	}
+
 	if packet == nil || err != nil || packet.Id() != 0x00 {
 		// 0x00 = Identification
 		Infof("%s didn't identify correctly.", p.Remote())
@@ -175,8 +235,6 @@ func (p *Player) Parse() {
 
 	// We'll pass it on eventually.
 	p.toServer <- packet
-	go p.readParse(p.client, p.toServer)  // C -> B
-	go p.writeParse(p.toClient, p.Client) // C <- B
 
 	// Store their username!
 	var ident *packets.Identification
@@ -184,6 +242,9 @@ func (p *Player) Parse() {
 	p.Name = ident.Name
 	p.CPE = ident.UserType == 0x42 // Magic value for CPE
 
+	// We handle authentication here if it's enabled, otherwise we just
+	// pull out the username from the initial Identification packet.
+	// NB: This only supports ClassiCube.
 	if p.ku.Config.Authenticate && !compareHash(p.ku.salt, p.Name, ident.KeyMotd) {
 		Infof("(%s) Connected, but didn't verify for %s", p.Remote(), p.Name)
 		disc, err := packets.NewDisconnectPlayer("Name wasn't verified!")
@@ -209,6 +270,8 @@ func NewPlayer(c net.Conn, ku *Kurafuto) (p *Player, err error) {
 		hub:      fmt.Sprintf("%s:%d", ku.Hub.Address, ku.Hub.Port),
 		toClient: make(chan packets.Packet, 64),
 		toServer: make(chan packets.Packet, 64),
+
+		qMutex: sync.Mutex{},
 	}
 	return
 }
