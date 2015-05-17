@@ -7,9 +7,17 @@ import (
 )
 
 var (
-	resetColor  = ansi.ColorCode("reset")
+	resetColor = ansi.ColorCode("reset")
+	fatalColor = ansi.ColorCode("red+b")
+	warnColor  = ansi.ColorCode("yellow+b")
+	debugColor = ansi.ColorCode("blue")
+	infoColor  = ansi.ColorCode("blue+b")
+)
+
+var (
 	colorRegexp = regexp.MustCompile(`&([a-fA-F0-9r])`)
 	colors      = map[byte]string{
+		// TODO: the rest of the color codes.
 		'0': ansi.ColorCode("black"),
 		'1': ansi.ColorCode("blue"),
 		'2': ansi.ColorCode("green"),
@@ -44,20 +52,32 @@ func Colorify(in string) string {
 	return string(repl) + resetColor
 }
 
-func Verbosef(s string, v ...interface{}) {
-	if verbosity < 2 {
-		return
-	}
-	Debugf(s, v...)
+func Fatalf(s string, v ...interface{}) {
+	log.Fatalf(fatalColor+s+resetColor, v...)
+}
+
+func Warnf(s string, v ...interface{}) {
+	log.Printf(warnColor+s+resetColor, v...)
 }
 
 func Debugf(s string, v ...interface{}) {
-	if verbosity < 1 {
+	if verbosity < 2 {
 		return
 	}
-	log.Printf("[DBUG] "+s, v...)
+	log.Printf(debugColor+s+resetColor, v...)
 }
 
 func Infof(s string, v ...interface{}) {
+	if verbosity < 1 {
+		return
+	}
+	log.Printf(infoColor+s+resetColor, v...)
+}
+
+func Logf(s string, v ...interface{}) {
 	log.Printf(s, v...)
+}
+
+func Log(s ...interface{}) {
+	log.Println(s...)
 }

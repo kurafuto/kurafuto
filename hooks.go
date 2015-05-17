@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/sysr-q/kyubu/cpe"
 	"github.com/sysr-q/kyubu/packets"
-	"log"
 	"strings"
 )
 
@@ -12,14 +11,14 @@ import (
 // that pass through Kurafuto. It's not that interesting, honestly.
 //
 //   parser := NewParser(...)
-//   parser.Register(AllPackets{}, LogMessage)
+//   parser.Register(packets.Message{}, LogMessage)
 func LogMessage(p *Player, dir HookDirection, packet packets.Packet) bool {
 	var msg *packets.Message
 	msg = packet.(*packets.Message)
 	if dir == FromClient {
-		log.Println(Colorify(fmt.Sprintf("&f<%s>&r %s", p.Name, msg.Message)))
+		Log(Colorify(fmt.Sprintf("&f<%s>&r %s", p.Name, msg.Message)))
 	} else {
-		log.Println(Colorify(fmt.Sprintf("&6[SERVER]&r %s", msg.Message)))
+		Log(Colorify(fmt.Sprintf("&6[SERVER]&r %s", msg.Message)))
 	}
 	return false
 }
@@ -67,7 +66,7 @@ func DebugPacket(p *Player, dir HookDirection, packet packets.Packet) (drop bool
 	if info, ok := packets.Packets[packet.Id()]; ok {
 		name = info.Name
 	}
-	Verbosef("(%s) %s; %s packet %#.2x [%s]", p.Id, p.Name, dir.String(), packet.Id(), name)
+	Debugf("(%s) %s; %s packet %#.2x [%s]", p.Id, p.Name, dir.String(), packet.Id(), name)
 	return
 }
 
