@@ -56,6 +56,10 @@ func Fatalf(s string, v ...interface{}) {
 	log.Fatalf(fatalColor+s+resetColor, v...)
 }
 
+func Fatal(v ...interface{}) {
+	log.Fatal(v...)
+}
+
 func Warnf(s string, v ...interface{}) {
 	log.Printf(warnColor+s+resetColor, v...)
 }

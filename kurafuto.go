@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/dchest/uniuri"
 	"github.com/sysr-q/kyubu/packets"
-	"log"
 	"net"
 	"sync"
 )
@@ -67,7 +66,7 @@ func (ku *Kurafuto) Run() {
 		if err != nil && !ku.Running {
 			break
 		} else if err != nil {
-			log.Fatal(err)
+			Fatal(err)
 		}
 
 		p, err := NewPlayer(c, ku)
