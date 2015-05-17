@@ -1,5 +1,5 @@
-Kurafuto (クラフト)
-===================
+Kurafuto
+========
 
 Minecraft Classic load balancer, similar to nginx or BungeeCord (hopefully!).
 
@@ -24,7 +24,7 @@ $ go install github.com/sysr-q/kurafuto
 # Set up where you're "running" Kurafuto from
 $ mkdir /path/to/kura
 $ cd /path/to/kura
-$ cp $GOPATH/github.com/sysr-q/kurafuto/kurafuto.json .
+$ cp $GOPATH/src/github.com/sysr-q/kurafuto/kurafuto.json .
 
 # Modify the configuration to your liking & run!
 $ vim kurafuto.json
@@ -38,16 +38,15 @@ server in a linked network of servers. Think an IRC network, in terms of hub/lea
 server links.
 
 ```
-                               [ Server A ]
-                            ____/
-        [ Client 1 ]       /         [ Server B ]
-                  \       /       ____/
- [ Client 2 ] -- [ Kurafuto ] ---`
-                  /       \_____
-        [ Client 3 ]            \
-                                 [ Server C ]
-
-Clients: 1, 2, 3                 Servers: A, B, C
+   +----------+                                 +----------+
+   | Client A |<----+                     +---->| Server A |
+   +----------+     |                     |     +----------+
+   +----------+     |    +----------+     |     +----------+
+   | Client B |<----+--->| Kurafuto |<----+---->| Server B |
+   +----------+     |    +----------+     |     +----------+
+   +----------+     |                     |     +----------+
+   | Client C |<----+                     +---->| Server C |
+   +----------+                                 +----------+
 ```
 
 ******
@@ -56,18 +55,16 @@ As there is no native signal for a server to indicate that a client (or a balanc
 masquerading as a client) should jump server, Kurafuto has to make use of some
 imperfect workaround solutions in the mean time.
 
-Implementation ideas have included:
+A client-side command, which Kurafuto intercepts, allowing the client to
+"force" a redirection. `:kura jump ServerA` , for example. (This is what is
+currently implemented.)
 
-* A client-side command, which Kurafuto intercepts, allowing the client to
-  "force" a redirection. `:kura jump ServerA` , for example. _This is what is
-  currently implemented._
-* Some horrifying sentinel packet between the server and Kurafuto, in the form
-  of `"\x00REDIRECT\xFFfoo.example.com:31337\xFF"`.
-* A custom [CPE](http://wiki.vg/Classic_Protocol_Extension) packet, which the
-  server could send, indicating where to jump to. This would be nice (and would
-  allow uses outside of Kurafuto), but getting a new packet into the spec is _hard_.
-  This would also require extra server work (to get around authentication when
-  not trusting a balancer), and this is a lot of hard work.
+## Client-commands
+
+* TBA: command prefix.
+* `:kura help`
+* `:kura list`
+* `:kura jump ServerA`
 
 ## Proxying
 
@@ -112,27 +109,25 @@ exact specifics of this (how the MOTD, etc. are set) is still TBA.
 
 Things to work on:
 
-* ~~Parse proxy mode~~ - works, and no longer do LevelDataChunk's cause issues.
+* ~~Parse proxy mode~~
 * Handle `SIGHUP` to reload configuration (preferably without disconnecting clients)
 * ~~Handle `SIGINT` and `SIGTERM` to gracefully shut down (kicking clients).~~
 * Heartbeats
-    * Just ClassiCube? Presumably.
+	* ClassiCube?
+	* Notchian
 * ~~Authentication (requires parse mode so it's not hellish)~~
-    * ClassiCube authentication is supported.
-* Forwarding on the "real" IP in an `X-Forwarded-For` manner. Might try to get
-  an extra packet into the CPE spec.
-* There's a slight delay when users connect where the balancer dials to the hub
-  server. What can we do about that? Keep a small "pool" of connections that we
-  refresh periodically? Not sure whether that's viable.
+	* ClassiCube authentication is supported.
+	* Notchian authentication
+* Encryption (latest Minecraft protocol)
+* Zipping (latest Minecraft protocol)
+* Forwarding on the "real" IP in an `X-Forwarded-For` manner.
+	* Potentially we could add an out-of-band Bukkit plugin, but that's TBA.
+* There's a slight delay when users connect where Kurafuto dials to the hub.
+	* Should we keep a hot pool of connections to pick from?
 * Handling redirection signals
-    * There are a few ways this could work, varying from decent to quite hacky,
-      so we'll have to try out a few and see how they work. Will we buffer some
-      packets (namely, `Identification`, `ExtInfo`, `ExtEntry`) and push those
-      on to the new server?
-    * A custom client command seems like a decent idea. Easy to intercept as well.
-* Perhaps a way to easily register custom packets in the config file, so that
-  while we don't _care_ about the packets, they'll still be passed through
-  without the need to recompile anything.
+	* How will we handle buffering packets so that the next server gets basic
+	  information about the connecting client? Which packets do we need to
+	  buffer?
 * Allow multiple Kurafuto servers to mesh link sideways, allowing extra crazy
   setups, and load balancing. Probably not required, but nice idea anyway.
 * Add extra debugging information, tidy up existing information, and ensure
