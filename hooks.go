@@ -70,6 +70,13 @@ func DebugPacket(p *Player, dir HookDirection, packet packets.Packet) (drop bool
 	return
 }
 
+////
+
+const (
+	commandPrefix = ":kura"
+	commandHelp   = "&5Type :kura list or :kura jump <server>"
+)
+
 func EdgeCommand(p *Player, dir HookDirection, packet packets.Packet) (drop bool) {
 	if dir != FromClient || Ku == nil || Ku.Config == nil || !Ku.Config.EdgeCommands {
 		return
@@ -83,23 +90,26 @@ func EdgeCommand(p *Player, dir HookDirection, packet packets.Packet) (drop bool
 		return
 	}
 
-	if len(bits) < 1 || bits[0] != ":kura" {
+	if len(bits) < 1 || bits[0] != commandPrefix {
 		return
 	}
+
 	switch bits[1] {
-		case " ":
-			msg, _ := packets.NewMessage(127, "&5Kurafuto wuz here!")
-			p.toClient <- msg
-		case "list":
-			message := fmt.Sprintf("&5%s players are online!", len(Ku.Players))
-			msg, _ := packets.NewMessage(127, message)
-			p.toClient <- msg
-		case "help":
-			msg, _ := packets.NewMessage(127, "&5Type :kura list or :kura jump <server>")
-			p.toClient <- msg
-		default:
-			msg, _ := packets.NewMessage(127, "&5Type :kura list or :kura jump <server>")
-			p.toClient <- msg
-	} 
+	case "list":
+		msg, _ := packets.NewMessage(127, "&5List of servers:")
+		// TODO: for _, server := range Ku.Config.Servers {}
+		p.toClient <- msg
+	case "info":
+		// TODO: add server name, motd, + basic info.
+		message := fmt.Sprintf("&5%d players are online!", len(Ku.Players))
+		msg, _ := packets.NewMessage(127, message)
+		p.toClient <- msg
+	case "help":
+		msg, _ := packets.NewMessage(127, commandHelp)
+		p.toClient <- msg
+	default:
+		msg, _ := packets.NewMessage(127, commandHelp)
+		p.toClient <- msg
+	}
 	return true
 }
