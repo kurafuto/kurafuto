@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"runtime"
 )
 
 var (
@@ -33,8 +34,12 @@ func sighupReload(c <-chan os.Signal) {
 }
 
 ////////////////////
+//Detect number of CPU cores to use 
+var cpus = runtime.NumCPU()
 
 func main() {
+	//Enable Multiple core usage
+	runtime.GOMAXPROCS(cpus)
 	configFile := flag.String("config", "kurafuto.json", "the file your Kurafuto configuration is stored in.")
 	//forceSalt := flag.String("forceSalt", "", "force a specific salt to be used (don't do this!)")
 	flag.IntVar(&verbosity, "v", 0, "Debugging verbosity level.")
