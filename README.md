@@ -132,3 +132,5 @@ Things to work on:
   setups, and load balancing. Probably not required, but nice idea anyway.
 * Add extra debugging information, tidy up existing information, and ensure
   that (in the case of bugs), it's all easily accessible to server admins.
+* Add modularity with [GopherLua](https://github.com/yuin/gopher-lua).
+    * Hooks, event-based. Basically `hooks.go` but tied into Lua.
