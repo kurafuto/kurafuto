@@ -86,9 +86,20 @@ func EdgeCommand(p *Player, dir HookDirection, packet packets.Packet) (drop bool
 	if len(bits) < 1 || bits[0] != ":kura" {
 		return
 	}
-
-	// TODO: Check bits[1] for sub command.
-	msg, _ := packets.NewMessage(127, "&5Kurafuto wuz here!")
-	p.toClient <- msg
+	switch bits[1] {
+		case " ":
+			msg, _ := packets.NewMessage(127, "&5Kurafuto wuz here!")
+			p.toClient <- msg
+		case "list":
+			message := fmt.Sprintf("&5%s players are online!", len(Ku.Players))
+			msg, _ := packets.NewMessage(127, message)
+			p.toClient <- msg
+		case "help":
+			msg, _ := packets.NewMessage(127, "&5Type :kura list or :kura jump <server>")
+			p.toClient <- msg
+		default:
+			msg, _ := packets.NewMessage(127, "&5Coming soon!")
+			p.toClient <- msg
+	} 
 	return true
 }
