@@ -15,26 +15,10 @@ var (
 	ErrParserFinished = errors.New("kurafuto: Parser finished (timed out)")
 )
 
-type HookDirection int
-
-func (h HookDirection) String() string {
-	if h == FromClient {
-		return "C->S"
-	} else if h == FromServer {
-		return "S->C"
-	}
-	return "?->?"
-}
-
-const (
-	FromClient HookDirection = iota
-	FromServer
-)
-
 // A Hook is a function which takes a packet, and information about where the
 // packet came from (player and direction). A return value of `true` means the
 // packet has been "handled", and the parser will skip to the next packet.
-type Hook func(*Player, HookDirection, packets.Packet) bool
+type Hook func(*Player, packets.PacketDirection, packets.Packet) bool
 
 type hookInfo struct {
 	Id string
@@ -66,7 +50,7 @@ type Parser struct {
 	conn      net.Conn
 	parser    packets.Parser
 	hooks     map[byte][]hookInfo
-	Direction HookDirection
+	Direction packets.PacketDirection
 	Disable   bool // Allows all hooks to be bypassed.
 
 	finished bool
@@ -180,11 +164,11 @@ func (p *Parser) UnregisterAll() {
 	p.hooks = make(map[byte][]hookInfo)
 }
 
-func NewParser(player *Player, conn net.Conn, dir HookDirection, t time.Duration) packets.Parser {
+func NewParser(player *Player, conn net.Conn, dir packets.PacketDirection, t time.Duration) packets.Parser {
 	return &Parser{
 		player:    player,
 		conn:      conn,
-		parser:    packets.NewParser(conn),
+		parser:    packets.NewParser(conn, dir),
 		hooks:     make(map[byte][]hookInfo),
 		Direction: dir,
 		mutex:     sync.Mutex{},

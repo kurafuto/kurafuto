@@ -4,11 +4,13 @@ import (
 	"crypto/md5"
 	"crypto/subtle"
 	"fmt"
-	"github.com/dchest/uniuri"
-	"github.com/sysr-q/kyubu/packets"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/dchest/uniuri"
+	"github.com/sysr-q/kyubu/classic"
+	"github.com/sysr-q/kyubu/packets"
 )
 
 type PlayerState int
@@ -108,7 +110,7 @@ func (p *Player) Quit() {
 // their connection. If packets.NewDisconnectPlayer returns an error, p.Quit is
 // called, and the error is returned.
 func (p *Player) Kick(msg string) error {
-	disc, err := packets.NewDisconnectPlayer(msg)
+	disc, err := classic.NewDisconnectPlayer(msg)
 	if err != nil {
 		p.Quit()
 		return err
@@ -208,18 +210,21 @@ func (p *Player) Parse() {
 	Debugf("(%s) Dialed %s!", p.Id, p.Server.RemoteAddr().String())
 
 	t := 2 * time.Second // TODO: Higher, lower? Notchian does 2-3s.
-	p.client = NewParser(p, p.Client, FromClient, t).(*Parser)
-	p.server = NewParser(p, p.Server, FromServer, t).(*Parser)
+	p.client = NewParser(p, p.Client, packets.ServerBound, t).(*Parser)
+	p.server = NewParser(p, p.Server, packets.ClientBound, t).(*Parser)
+
+	// TODO: Config option to log messages?
 	//p.client.Register(packets.Message{}, LogMessage)
 	//p.server.Register(packets.Message{}, LogMessage)
+
 	// General hooks to drop/debug log packets first.
-	p.client.Register(AllPackets{}, DebugPacket)
-	p.server.Register(AllPackets{}, DebugPacket)
+	//p.client.Register(AllPackets{}, DebugPacket) // TODO
+	//p.server.Register(AllPackets{}, DebugPacket) // TODO
 	p.client.Register(AllPackets{}, DropPacket)
 	p.server.Register(AllPackets{}, DropPacket)
 
 	if p.ku.Config.EdgeCommands {
-		p.client.Register(packets.Message{}, EdgeCommand)
+		p.client.Register(classic.Message{}, EdgeCommand)
 	}
 
 	// So we can shove packets down the pipe about identification.
@@ -248,8 +253,8 @@ func (p *Player) Parse() {
 	p.toServer <- packet
 
 	// Store their username!
-	var ident *packets.Identification
-	ident = packet.(*packets.Identification)
+	var ident *classic.Identification
+	ident = packet.(*classic.Identification)
 	p.Name = ident.Name
 	p.CPE = ident.UserType == 0x42 // Magic value for CPE
 
@@ -258,7 +263,7 @@ func (p *Player) Parse() {
 	// NB: This only supports ClassiCube.
 	if p.ku.Config.Authenticate && !compareHash(p.ku.salt, p.Name, ident.KeyMotd) {
 		Infof("(%s) Connected, but didn't verify for %s", p.Remote(), p.Name)
-		disc, err := packets.NewDisconnectPlayer("Name wasn't verified!")
+		disc, err := classic.NewDisconnectPlayer("Name wasn't verified!")
 		if err != nil {
 			p.Quit()
 			return

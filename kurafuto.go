@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/dchest/uniuri"
-	"github.com/sysr-q/kyubu/packets"
+	"github.com/sysr-q/kyubu/classic"
 )
 
 type Kurafuto struct {
@@ -42,7 +42,7 @@ func (ku *Kurafuto) Quit() {
 	ku.Listener.Close()
 	for len(ku.Players) > 0 {
 		for _, p := range ku.Players {
-			disc, _ := packets.NewDisconnectPlayer("Server shutting down.")
+			disc, _ := classic.NewDisconnectPlayer("Server shutting down.")
 			p.toClient <- disc
 			p.Quit()
 		}

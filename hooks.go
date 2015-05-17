@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/sysr-q/kyubu/classic"
 	"github.com/sysr-q/kyubu/cpe"
 	"github.com/sysr-q/kyubu/packets"
 	"strings"
@@ -12,20 +13,22 @@ import (
 //
 //   parser := NewParser(...)
 //   parser.Register(packets.Message{}, LogMessage)
-func LogMessage(p *Player, dir HookDirection, packet packets.Packet) bool {
-	var msg *packets.Message
-	msg = packet.(*packets.Message)
-	if dir == FromClient {
+func LogMessage(p *Player, dir packets.PacketDirection, packet packets.Packet) bool {
+	var msg *classic.Message
+	msg = packet.(*classic.Message)
+	if dir == packets.ServerBound {
 		Log(Colorify(fmt.Sprintf("&f<%s>&r %s", p.Name, msg.Message)))
-	} else {
+	} else if dir == packets.ClientBound {
 		Log(Colorify(fmt.Sprintf("&6[SERVER]&r %s", msg.Message)))
+	} else {
+		Warnf("LogMessage for %s, direction is: %d", p.Name, dir)
 	}
 	return false
 }
 
 // DropPacket is a simple hook which will "skip" dropped packets included in the
 // server's drop list (including dropped CPE extensions).
-func DropPacket(p *Player, dir HookDirection, packet packets.Packet) (drop bool) {
+func DropPacket(p *Player, dir packets.PacketDirection, packet packets.Packet) (drop bool) {
 	if Ku == nil || Ku.Config == nil {
 		drop = false
 		return
@@ -47,26 +50,8 @@ func DropPacket(p *Player, dir HookDirection, packet packets.Packet) (drop bool)
 		}
 	}
 	if drop {
-		Debugf("(%s) %s dropped packet %#.2x (%s)", p.Id, p.Name, packet.Id(), dir.String())
+		Debugf("(%s) %s dropped packet %#.2x", p.Id, p.Name, packet.Id())
 	}
-	return
-}
-
-func DebugPacket(p *Player, dir HookDirection, packet packets.Packet) (drop bool) {
-	if Ku == nil || Ku.Config == nil {
-		return
-	}
-	for _, id := range Ku.Config.Ignore {
-		if id != packet.Id() {
-			continue
-		}
-		return
-	}
-	name := "Unknown"
-	if info, ok := packets.Packets[packet.Id()]; ok {
-		name = info.Name
-	}
-	Debugf("(%s) %s; %s packet %#.2x [%s]", p.Id, p.Name, dir.String(), packet.Id(), name)
 	return
 }
 
@@ -77,14 +62,14 @@ const (
 	commandHelp   = "&5Type :kura list or :kura jump <server>"
 )
 
-func EdgeCommand(p *Player, dir HookDirection, packet packets.Packet) (drop bool) {
-	if dir != FromClient || Ku == nil || Ku.Config == nil || !Ku.Config.EdgeCommands {
+func EdgeCommand(p *Player, dir packets.PacketDirection, packet packets.Packet) (drop bool) {
+	if dir != packets.ServerBound || Ku == nil || Ku.Config == nil || !Ku.Config.EdgeCommands {
 		return
 	}
 
 	var bits []string
 
-	if msg, ok := packet.(*packets.Message); ok {
+	if msg, ok := packet.(*classic.Message); ok {
 		bits = strings.Split(msg.Message, " ")
 	} else {
 		return
@@ -96,19 +81,19 @@ func EdgeCommand(p *Player, dir HookDirection, packet packets.Packet) (drop bool
 
 	switch bits[1] {
 	case "list":
-		msg, _ := packets.NewMessage(127, "&5List of servers:")
+		msg, _ := classic.NewMessage(127, "&5List of servers:")
 		// TODO: for _, server := range Ku.Config.Servers {}
 		p.toClient <- msg
 	case "info":
 		// TODO: add server name, motd, + basic info.
 		message := fmt.Sprintf("&5%d players are online!", len(Ku.Players))
-		msg, _ := packets.NewMessage(127, message)
+		msg, _ := classic.NewMessage(127, message)
 		p.toClient <- msg
 	case "help":
-		msg, _ := packets.NewMessage(127, commandHelp)
+		msg, _ := classic.NewMessage(127, commandHelp)
 		p.toClient <- msg
 	default:
-		msg, _ := packets.NewMessage(127, commandHelp)
+		msg, _ := classic.NewMessage(127, commandHelp)
 		p.toClient <- msg
 	}
 	return true
