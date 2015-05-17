@@ -2,6 +2,7 @@
 	"verify-names": true,
 	"heartbeat": true,
 	"edge-commands": true,
+	"authentication": false,
 	"name": "Foo Bar [Kurafuto]",
 	"motd": "Welcome to Foo Bar! +ophax",
 	"address": "0.0.0.0",
