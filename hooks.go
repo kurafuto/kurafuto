@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/sysr-q/kyubu/cpe"
 	"github.com/sysr-q/kyubu/packets"
-	"log"
 	"strings"
 )
 
@@ -12,14 +11,14 @@ import (
 // that pass through Kurafuto. It's not that interesting, honestly.
 //
 //   parser := NewParser(...)
-//   parser.Register(AllPackets{}, LogMessage)
+//   parser.Register(packets.Message{}, LogMessage)
 func LogMessage(p *Player, dir HookDirection, packet packets.Packet) bool {
 	var msg *packets.Message
 	msg = packet.(*packets.Message)
 	if dir == FromClient {
-		log.Println(Colorify(fmt.Sprintf("&f<%s>&r %s", p.Name, msg.Message)))
+		Log(Colorify(fmt.Sprintf("&f<%s>&r %s", p.Name, msg.Message)))
 	} else {
-		log.Println(Colorify(fmt.Sprintf("&6[SERVER]&r %s", msg.Message)))
+		Log(Colorify(fmt.Sprintf("&6[SERVER]&r %s", msg.Message)))
 	}
 	return false
 }
@@ -67,9 +66,16 @@ func DebugPacket(p *Player, dir HookDirection, packet packets.Packet) (drop bool
 	if info, ok := packets.Packets[packet.Id()]; ok {
 		name = info.Name
 	}
-	Verbosef("(%s) %s; %s packet %#.2x [%s]", p.Id, p.Name, dir.String(), packet.Id(), name)
+	Debugf("(%s) %s; %s packet %#.2x [%s]", p.Id, p.Name, dir.String(), packet.Id(), name)
 	return
 }
+
+////
+
+const (
+	commandPrefix = ":kura"
+	commandHelp   = "&5Type :kura list or :kura jump <server>"
+)
 
 func EdgeCommand(p *Player, dir HookDirection, packet packets.Packet) (drop bool) {
 	if dir != FromClient || Ku == nil || Ku.Config == nil || !Ku.Config.EdgeCommands {
@@ -84,12 +90,26 @@ func EdgeCommand(p *Player, dir HookDirection, packet packets.Packet) (drop bool
 		return
 	}
 
-	if len(bits) < 1 || bits[0] != ":kura" {
+	if len(bits) < 1 || bits[0] != commandPrefix {
 		return
 	}
 
-	// TODO: Check bits[1] for sub command.
-	msg, _ := packets.NewMessage(127, "&5Kurafuto wuz here!")
-	p.toClient <- msg
+	switch bits[1] {
+	case "list":
+		msg, _ := packets.NewMessage(127, "&5List of servers:")
+		// TODO: for _, server := range Ku.Config.Servers {}
+		p.toClient <- msg
+	case "info":
+		// TODO: add server name, motd, + basic info.
+		message := fmt.Sprintf("&5%d players are online!", len(Ku.Players))
+		msg, _ := packets.NewMessage(127, message)
+		p.toClient <- msg
+	case "help":
+		msg, _ := packets.NewMessage(127, commandHelp)
+		p.toClient <- msg
+	default:
+		msg, _ := packets.NewMessage(127, commandHelp)
+		p.toClient <- msg
+	}
 	return true
 }

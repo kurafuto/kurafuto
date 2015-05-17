@@ -5,8 +5,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"syscall"
 	"runtime"
+	"syscall"
 )
 
 var (
@@ -34,7 +34,7 @@ func sighupReload(c <-chan os.Signal) {
 }
 
 ////////////////////
-//Detect number of CPU cores to use 
+//Detect number of CPU cores to use
 var cpus = runtime.NumCPU()
 
 func main() {

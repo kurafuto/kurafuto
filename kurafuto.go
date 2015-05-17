@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 
@@ -41,7 +40,7 @@ func (ku *Kurafuto) Quit() {
 
 	// So we don't take on any new players.
 	ku.Listener.Close()
-	for len(ku.Players) <= 0 {
+	for len(ku.Players) > 0 {
 		for _, p := range ku.Players {
 			disc, _ := packets.NewDisconnectPlayer("Server shutting down.")
 			p.toClient <- disc
@@ -68,7 +67,7 @@ func (ku *Kurafuto) Run() {
 		if err != nil && !ku.Running {
 			break
 		} else if err != nil {
-			log.Fatal(err)
+			Fatal(err)
 		}
 
 		p, err := NewPlayer(c, ku)
