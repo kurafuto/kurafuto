@@ -134,8 +134,6 @@ Things to work on:
   while we don't _care_ about the packets, they'll still be passed through
   without the need to recompile anything.
 * Allow multiple Kurafuto servers to mesh link sideways, allowing extra crazy
-  setups, and load balancing? Maybe if there's a good reason, we'll see.
-* Daemonizing (hard in Go), multiplexing log files, storing a pidfile, all the
-  usual stuff you'd expect a long-running server process to do.
+  setups, and load balancing. Probably not required, but nice idea anyway.
 * Add extra debugging information, tidy up existing information, and ensure
   that (in the case of bugs), it's all easily accessible to server admins.

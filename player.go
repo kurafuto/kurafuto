@@ -7,16 +7,17 @@ import (
 	"github.com/dchest/uniuri"
 	"github.com/sysr-q/kyubu/packets"
 	"net"
-	"time"
 	"sync"
+	"time"
 )
 
 type PlayerState int
 
 const (
-	Dead PlayerState = iota
+	Connecting PlayerState = iota
 	Identification
-	Idle
+	Idle // this means we're just proxying packets for this user now.
+	Disconnected
 )
 
 // compareHash compares a player's given "MpPass" against the computed hash
@@ -51,6 +52,7 @@ type Player struct {
 	qMutex sync.Mutex
 }
 
+// Remote returns a player's remote address (connecting IP) as a string.
 func (p *Player) Remote() string {
 	return p.Client.RemoteAddr().String()
 }
@@ -65,8 +67,9 @@ func (p *Player) Quit() {
 	p.quitting = true
 	p.qMutex.Unlock()
 
-	p.State = Dead
-	Debugf("(%s) Remove(p) == %v", p.Id, p.ku.Remove(p))
+	p.State = Disconnected
+	rem := p.ku.Remove(p) // Ensure we're removed from the server's player list
+	Debugf("(%s) Remove(p) == %v", p.Id, rem)
 
 	go func() {
 		// Wait a bit to write any packets still in the queue.
@@ -99,6 +102,20 @@ func (p *Player) Quit() {
 		close(p.toClient)
 		close(p.toServer)
 	}()
+}
+
+// Kick sends attempts to send a player a DisconnectPlayer packet, then quits
+// their connection. If packets.NewDisconnectPlayer returns an error, p.Quit is
+// called, and the error is returned.
+func (p *Player) Kick(msg string) error {
+	disc, err := packets.NewDisconnectPlayer(msg)
+	if err != nil {
+		p.Quit()
+		return err
+	}
+	p.toClient <- disc
+	p.Quit()
+	return nil
 }
 
 // Dial (attempts to) make an outbound connection to the stored hub address.
@@ -215,13 +232,7 @@ func (p *Player) Parse() {
 	// DisconnectPlayer packet and kill their connections.
 	if err == ErrParserFinished {
 		Infof("(%s) Connected, but didn't send anything in time.", p.Remote())
-		disc, err := packets.NewDisconnectPlayer("You need to log in!")
-		if err != nil {
-			p.Quit()
-			return
-		}
-		p.toClient <- disc
-		p.Quit()
+		p.Kick("You need to log in!")
 		return
 	}
 
@@ -270,6 +281,8 @@ func NewPlayer(c net.Conn, ku *Kurafuto) (p *Player, err error) {
 		hub:      fmt.Sprintf("%s:%d", ku.Hub.Address, ku.Hub.Port),
 		toClient: make(chan packets.Packet, 64),
 		toServer: make(chan packets.Packet, 64),
+
+		State: Connecting,
 
 		qMutex: sync.Mutex{},
 	}

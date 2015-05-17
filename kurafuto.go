@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dchest/uniuri"
+	"github.com/sysr-q/kyubu/packets"
 	"log"
 	"net"
 	"sync"
-	"github.com/sysr-q/kyubu/packets"
 	"time"
 )
 
@@ -49,8 +49,8 @@ func (ku *Kurafuto) Quit() {
 	}
 
 	go func() {
-		// TODO: `while len(ku.Players) > 0 {}`?
-		time.Sleep(2 * time.Second)
+		// Try to ensure queued packets (including disconnects) are sent.
+		time.Sleep(1 * time.Second)
 		ku.Done <- true
 	}()
 }

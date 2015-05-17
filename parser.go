@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"github.com/dchest/uniuri"
 	"github.com/sysr-q/kyubu/packets"
-	"time"
 	"net"
 	"sync"
+	"time"
 )
 
 var (
-	ErrPacketSkipped = errors.New("kurafuto: Packet skipped")
+	ErrPacketSkipped  = errors.New("kurafuto: Packet skipped")
 	ErrParserFinished = errors.New("kurafuto: Parser finished (timed out)")
 )
 
@@ -63,15 +63,15 @@ func (p AllPackets) Bytes() []byte {
 // time, the parser is "finished", and will stop consuming packets.
 type Parser struct {
 	player    *Player
-	conn net.Conn
+	conn      net.Conn
 	parser    packets.Parser
 	hooks     map[byte][]hookInfo
 	Direction HookDirection
 	Disable   bool // Allows all hooks to be bypassed.
 
 	finished bool
-	mutex sync.Mutex
-	Timeout time.Duration
+	mutex    sync.Mutex
+	Timeout  time.Duration
 }
 
 func (p *Parser) Finish() {
@@ -166,6 +166,7 @@ func (p *Parser) Unregister(hookId string) (bool, error) {
 			if hook.Id != hookId {
 				continue
 			}
+			// This just removes the hook we're looking for. Bless Golang.
 			p.hooks[id] = append(p.hooks[id][:i], p.hooks[id][i+1:]...)
 			return true, nil
 		}
@@ -182,11 +183,11 @@ func (p *Parser) UnregisterAll() {
 func NewParser(player *Player, conn net.Conn, dir HookDirection, t time.Duration) packets.Parser {
 	return &Parser{
 		player:    player,
-		conn: conn,
+		conn:      conn,
 		parser:    packets.NewParser(conn),
 		hooks:     make(map[byte][]hookInfo),
 		Direction: dir,
-		mutex: sync.Mutex{},
-		Timeout: t,
+		mutex:     sync.Mutex{},
+		Timeout:   t,
 	}
 }
