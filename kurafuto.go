@@ -8,7 +8,6 @@ import (
 	"net"
 	"sync"
 	"github.com/sysr-q/kyubu/packets"
-	"time"
 )
 
 type Kurafuto struct {
@@ -41,18 +40,14 @@ func (ku *Kurafuto) Quit() {
 
 	// So we don't take on any new players.
 	ku.Listener.Close()
-
-	for _, p := range ku.Players {
-		disc, _ := packets.NewDisconnectPlayer("Server shutting down.")
-		p.toClient <- disc
-		p.Quit()
+	for len(ku.Players) <= 0 {
+		for _, p := range ku.Players {
+			disc, _ := packets.NewDisconnectPlayer("Server shutting down.")
+			p.toClient <- disc
+			p.Quit()
+		}
 	}
-
-	go func() {
-		// TODO: `while len(ku.Players) > 0 {}`?
-		time.Sleep(2 * time.Second)
-		ku.Done <- true
-	}()
+	ku.Done <- true
 }
 
 func (ku *Kurafuto) Run() {
