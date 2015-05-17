@@ -98,7 +98,7 @@ func EdgeCommand(p *Player, dir HookDirection, packet packets.Packet) (drop bool
 			msg, _ := packets.NewMessage(127, "&5Type :kura list or :kura jump <server>")
 			p.toClient <- msg
 		default:
-			msg, _ := packets.NewMessage(127, "&5Coming soon!")
+			msg, _ := packets.NewMessage(127, "&5Type :kura list or :kura jump <server>")
 			p.toClient <- msg
 	} 
 	return true
