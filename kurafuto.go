@@ -3,12 +3,12 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/dchest/uniuri"
-	"github.com/sysr-q/kyubu/packets"
 	"log"
 	"net"
 	"sync"
-	"time"
+
+	"github.com/dchest/uniuri"
+	"github.com/sysr-q/kyubu/packets"
 )
 
 type Kurafuto struct {
@@ -41,18 +41,14 @@ func (ku *Kurafuto) Quit() {
 
 	// So we don't take on any new players.
 	ku.Listener.Close()
-
-	for _, p := range ku.Players {
-		disc, _ := packets.NewDisconnectPlayer("Server shutting down.")
-		p.toClient <- disc
-		p.Quit()
+	for len(ku.Players) <= 0 {
+		for _, p := range ku.Players {
+			disc, _ := packets.NewDisconnectPlayer("Server shutting down.")
+			p.toClient <- disc
+			p.Quit()
+		}
 	}
-
-	go func() {
-		// Try to ensure queued packets (including disconnects) are sent.
-		time.Sleep(1 * time.Second)
-		ku.Done <- true
-	}()
+	ku.Done <- true
 }
 
 func (ku *Kurafuto) Run() {
