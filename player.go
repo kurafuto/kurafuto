@@ -33,18 +33,29 @@ func compareHash(salt, name, mpPass string) bool {
 	return subtle.ConstantTimeCompare([]byte(sum), []byte(mpPass)) == 1
 }
 
+type BoundInfo struct {
+	Conn   net.Conn
+	Parser *Parser
+	C      chan packets.Packet
+}
+
+// Empty attempts to eat up all the packets in the packet channel.
+func (b *BoundInfo) Empty() {
+	for {
+		_, ok := <-b.C
+		if !ok {
+			break
+		}
+	}
+}
+
 type Player struct {
 	Id   string
 	Name string // From 0x00 Identification packet
 	CPE  bool   // Does this player claim CPE support?
 
-	Client   net.Conn // Client <-> Balancer
-	client   *Parser  // C <-> B
-	toClient chan packets.Packet
-
-	Server   net.Conn // Balancer <-> Server
-	server   *Parser  // B <-> S
-	toServer chan packets.Packet
+	Client BoundInfo // Client <-> Balancer
+	Server BoundInfo // Balancer <-> Server
 
 	State          PlayerState
 	quit, quitting bool
@@ -56,7 +67,7 @@ type Player struct {
 
 // Remote returns a player's remote address (connecting IP) as a string.
 func (p *Player) Remote() string {
-	return p.Client.RemoteAddr().String()
+	return p.Client.Conn.RemoteAddr().String()
 }
 
 func (p *Player) Quit() {
@@ -81,28 +92,30 @@ func (p *Player) Quit() {
 		p.quit = true
 		p.qMutex.Unlock()
 
-		p.client.Finish()
-		p.server.Finish()
+		p.Client.Parser.Finish()
+		p.Server.Parser.Finish()
 
-		// p.client and p.server might be nil if we hit an error whilst
+		// p.{Client,Server}.Parser might be nil if we hit an error whilst
 		// dialing the remote.
-		if p.client != nil {
-			p.client.Disable = true
-			p.client.UnregisterAll()
-		}
-		if p.server != nil {
-			p.server.Disable = true
-			p.server.UnregisterAll()
+		if p.Client.Parser != nil {
+			p.Client.Parser.Disable = true
+			p.Client.Parser.UnregisterAll()
 		}
 
-		if p.Client != nil {
-			p.Client.Close()
+		if p.Server.Parser != nil {
+			p.Server.Parser.Disable = true
+			p.Server.Parser.UnregisterAll()
 		}
-		if p.Server != nil {
-			p.Server.Close()
+
+		if p.Client.Conn != nil {
+			p.Client.Conn.Close()
 		}
-		close(p.toClient)
-		close(p.toServer)
+		if p.Server.Conn != nil {
+			p.Server.Conn.Close()
+		}
+
+		close(p.Client.C)
+		close(p.Server.C)
 	}()
 }
 
@@ -115,7 +128,7 @@ func (p *Player) Kick(msg string) error {
 		p.Quit()
 		return err
 	}
-	p.toClient <- disc
+	p.Client.C <- disc
 	p.Quit()
 	return nil
 }
@@ -129,7 +142,7 @@ func (p *Player) Dial() bool {
 		p.Quit()
 		return false
 	}
-	p.Server = server
+	p.Server.Conn = server
 	p.State = Identification
 	return true
 }
@@ -207,11 +220,11 @@ func (p *Player) Parse() {
 	if !p.Dial() {
 		return
 	}
-	Debugf("(%s) Dialed %s!", p.Id, p.Server.RemoteAddr().String())
+	Debugf("(%s) Dialed %s!", p.Id, p.Server.Conn.RemoteAddr().String())
 
 	t := 2 * time.Second // TODO: Higher, lower? Notchian does 2-3s.
-	p.client = NewParser(p, p.Client, packets.ServerBound, t).(*Parser)
-	p.server = NewParser(p, p.Server, packets.ClientBound, t).(*Parser)
+	p.Client.Parser = NewParser(p, p.Client.Conn, packets.ServerBound, t).(*Parser)
+	p.Server.Parser = NewParser(p, p.Server.Conn, packets.ClientBound, t).(*Parser)
 
 	// TODO: Config option to log messages?
 	//p.client.Register(packets.Message{}, LogMessage)
@@ -220,18 +233,18 @@ func (p *Player) Parse() {
 	// General hooks to drop/debug log packets first.
 	//p.client.Register(AllPackets{}, DebugPacket) // TODO
 	//p.server.Register(AllPackets{}, DebugPacket) // TODO
-	p.client.Register(AllPackets{}, DropPacket)
-	p.server.Register(AllPackets{}, DropPacket)
+	p.Client.Parser.Register(AllPackets{}, DropPacket)
+	p.Server.Parser.Register(AllPackets{}, DropPacket)
 
 	if p.ku.Config.EdgeCommands {
-		p.client.Register(classic.Message{}, EdgeCommand)
+		p.Client.Parser.Register(classic.Message{}, EdgeCommand)
 	}
 
 	// So we can shove packets down the pipe about identification.
-	go p.readParse(p.client, p.toServer)  // C -> B
-	go p.writeParse(p.toClient, p.Client) // C <- B
+	go p.readParse(p.Client.Parser, p.Server.C) // C -> B
+	go p.writeParse(p.Client.C, p.Client.Conn)  // C <- B
 
-	packet, err := p.client.Next()
+	packet, err := p.Client.Parser.Next()
 
 	// This might indicate a read timeout, so just in case we shove down a
 	// DisconnectPlayer packet and kill their connections.
@@ -250,7 +263,7 @@ func (p *Player) Parse() {
 	}
 
 	// We'll pass it on eventually.
-	p.toServer <- packet
+	p.Server.C <- packet
 
 	// Store their username!
 	var ident *classic.Identification
@@ -260,7 +273,9 @@ func (p *Player) Parse() {
 
 	// We handle authentication here if it's enabled, otherwise we just
 	// pull out the username from the initial Identification packet.
-	// NB: This only supports ClassiCube.
+	// NOTE: This only supports ClassiCube.
+	// TODO: Support Notchian authentication.
+	// TODO: Tidy this trash up.
 	if p.ku.Config.Authenticate && !compareHash(p.ku.salt, p.Name, ident.KeyMotd) {
 		Infof("(%s) Connected, but didn't verify for %s", p.Remote(), p.Name)
 		disc, err := classic.NewDisconnectPlayer("Name wasn't verified!")
@@ -268,24 +283,24 @@ func (p *Player) Parse() {
 			p.Quit()
 			return
 		}
-		p.toClient <- disc
+		p.Client.C <- disc
 		p.Quit()
 		return
 	}
 
 	// Now we can start to pass things along to the server.
-	go p.readParse(p.server, p.toClient)  // B <- S
-	go p.writeParse(p.toServer, p.Server) // B -> S
+	go p.readParse(p.Server.Parser, p.Client.C) // B <- S
+	go p.writeParse(p.Server.C, p.Server.Conn)  // B -> S
 }
 
 func NewPlayer(c net.Conn, ku *Kurafuto) (p *Player, err error) {
 	p = &Player{
-		Id:       uniuri.NewLen(8),
-		Client:   c,
-		ku:       ku,
-		hub:      fmt.Sprintf("%s:%d", ku.Hub.Address, ku.Hub.Port),
-		toClient: make(chan packets.Packet, 64),
-		toServer: make(chan packets.Packet, 64),
+		Id:  uniuri.NewLen(8),
+		ku:  ku,
+		hub: fmt.Sprintf("%s:%d", ku.Hub.Address, ku.Hub.Port),
+
+		Client: BoundInfo{C: make(chan packets.Packet, 64)},
+		Server: BoundInfo{C: make(chan packets.Packet, 64)},
 
 		State: Connecting,
 

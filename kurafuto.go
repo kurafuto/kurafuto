@@ -43,7 +43,7 @@ func (ku *Kurafuto) Quit() {
 	for len(ku.Players) > 0 {
 		for _, p := range ku.Players {
 			disc, _ := classic.NewDisconnectPlayer("Server shutting down.")
-			p.toClient <- disc
+			p.Client.C <- disc
 			p.Quit()
 		}
 	}
@@ -100,8 +100,8 @@ func (ku *Kurafuto) Remove(p *Player) bool {
 		if p.Name == "" {
 			f = "%s(%s) disconnected"
 		}
-		Infof(f, p.Name, p.Client.RemoteAddr().String())
-		Debugf("(%s) %s disconnected from slot %d", p.Id, p.Client.RemoteAddr().String(), i)
+		Infof(f, p.Name, p.Remote())
+		Debugf("(%s) %s disconnected from slot %d", p.Id, p.Remote(), i)
 		return true
 	}
 	return false

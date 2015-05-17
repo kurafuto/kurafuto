@@ -83,18 +83,18 @@ func EdgeCommand(p *Player, dir packets.PacketDirection, packet packets.Packet) 
 	case "list":
 		msg, _ := classic.NewMessage(127, "&5List of servers:")
 		// TODO: for _, server := range Ku.Config.Servers {}
-		p.toClient <- msg
+		p.Client.C <- msg
 	case "info":
 		// TODO: add server name, motd, + basic info.
 		message := fmt.Sprintf("&5%d players are online!", len(Ku.Players))
 		msg, _ := classic.NewMessage(127, message)
-		p.toClient <- msg
+		p.Client.C <- msg
 	case "help":
 		msg, _ := classic.NewMessage(127, commandHelp)
-		p.toClient <- msg
+		p.Client.C <- msg
 	default:
 		msg, _ := classic.NewMessage(127, commandHelp)
-		p.toClient <- msg
+		p.Client.C <- msg
 	}
 	return true
 }
