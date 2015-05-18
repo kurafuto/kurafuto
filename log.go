@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/mgutz/ansi"
 	"log"
 	"regexp"
+
+	"github.com/mgutz/ansi"
 )
 
 var (
