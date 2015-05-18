@@ -9,24 +9,21 @@ import (
 	"syscall"
 )
 
-var (
-	Ku        *Kurafuto
-	verbosity int
-)
-
-func sigintQuit(c <-chan os.Signal) {
+func sigintQuit(ku *Kurafuto, c <-chan os.Signal) {
 	<-c
-	if Ku == nil {
+	if ku == nil {
+		// TODO: Log this unfortunate event.
 		return
 	}
 	log.Println("Shutting down!")
-	Ku.Quit()
+	ku.Quit()
 }
 
-func sighupReload(c <-chan os.Signal) {
+func sighupReload(ku *Kurafuto, c <-chan os.Signal) {
 	for {
 		<-c
-		if Ku == nil {
+		if ku == nil {
+			// TODO: Log this unfortunate event.
 			return
 		}
 		log.Println("Should reload config now, but that isn't implemented.")
@@ -34,15 +31,23 @@ func sighupReload(c <-chan os.Signal) {
 }
 
 ////////////////////
-//Detect number of CPU cores to use
-var cpus = runtime.NumCPU()
+
+// NOTE: Temporary variables, remove them and do dependency injection.
+var (
+	Ku        *Kurafuto
+	Verbosity int
+	// Config *Config
+)
 
 func main() {
-	//Enable Multiple core usage
-	runtime.GOMAXPROCS(cpus)
-	configFile := flag.String("config", "kurafuto.json", "the file your Kurafuto configuration is stored in.")
-	//forceSalt := flag.String("forceSalt", "", "force a specific salt to be used (don't do this!)")
-	flag.IntVar(&verbosity, "v", 0, "Debugging verbosity level.")
+	// Enable Multiple core usage
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	var (
+		configFile = flag.String("config", "kurafuto.json", "the file your Kurafuto configuration is stored in")
+		verbosity  = flag.Int("v", 0, "Verbosity level; 0 (default), 1 (info), 2 (debug)")
+	)
+
 	flag.Parse()
 
 	config, err := NewConfigFile(*configFile)
@@ -55,14 +60,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	/*if *forceSalt != "" {
-		ku.salt = *forceSalt
-	}*/
+	Logf("Kurafuto now listening on %s:%d with %d servers", config.Address, config.Port, len(config.Servers))
+	Debugf("Debugging level %d enabled! (Salt: %s)", verbosity, ku.salt)
 
-	Ku = ku // Make it global.
-
-	Infof("Kurafuto now listening on %s:%d with %d servers", config.Address, config.Port, len(config.Servers))
-	Debugf("Debugging level %d enabled! (Salt: %s)", verbosity, Ku.salt)
 	if len(config.Ignore) > 0 {
 		Debugf("Ignoring these packets: %s", config.Ignore.String())
 	}
@@ -75,12 +75,14 @@ func main() {
 
 	sigint := make(chan os.Signal, 1)
 	signal.Notify(sigint, os.Interrupt, syscall.SIGTERM)
-	go sigintQuit(sigint)
+	go sigintQuit(ku, sigint)
 
 	sighup := make(chan os.Signal, 3)
 	signal.Notify(sighup, syscall.SIGHUP)
-	go sighupReload(sighup)
+	go sighupReload(ku, sighup)
 
+	// The end.
 	go ku.Run()
 	<-ku.Done
+	Log("Bye!")
 }

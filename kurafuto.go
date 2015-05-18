@@ -5,10 +5,48 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"github.com/dchest/uniuri"
 	"github.com/sysr-q/kyubu/classic"
 )
+
+// Signal is a type that embeds sync/atomic.Value; it's used to do thread-safe
+// tests of when the server has stopped. Basically a big old thread-safe bool.
+type Signal struct {
+	v  atomic.Value
+	mu sync.Mutex
+}
+
+// Start "restarts" the signal, by storing true.
+func (s *Signal) Start() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.v.Store(true)
+}
+
+// Finish "stops" the signal, by storing false.
+func (s *Signal) Finish() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.v.Store(false)
+}
+
+// Value returns the stored value of the Signal.
+func (s *Signal) Value() bool {
+	return s.v.Load().(bool)
+}
+
+func NewSignal() *Signal {
+	s := &Signal{
+		v:  atomic.Value{},
+		mu: sync.Mutex{},
+	}
+	s.Start()
+	return s
+}
+
+//////////
 
 type Kurafuto struct {
 	Players []*Player
@@ -22,21 +60,16 @@ type Kurafuto struct {
 	Config *Config
 
 	Listener net.Listener
-	Done     chan bool
-	Running  bool
 
-	rMut sync.Mutex
+	Alive *Signal
+	done  chan bool   // The channel we really send to.
+	Done  <-chan bool // The channel we send to when it's all over.
 }
 
 func (ku *Kurafuto) Quit() {
-	ku.rMut.Lock()
-	if !ku.Running {
-		ku.rMut.Unlock()
+	if !ku.Alive.Value() {
 		return
 	}
-
-	ku.Running = false
-	ku.rMut.Unlock()
 
 	// So we don't take on any new players.
 	ku.Listener.Close()
@@ -47,24 +80,15 @@ func (ku *Kurafuto) Quit() {
 			p.Quit()
 		}
 	}
-	ku.Done <- true
+
+	ku.done <- true
+	ku.Alive.Finish()
 }
 
 func (ku *Kurafuto) Run() {
-	ku.rMut.Lock()
-	ku.Running = true
-	ku.rMut.Unlock()
-
-	for {
-		ku.rMut.Lock()
-		if !ku.Running {
-			ku.rMut.Unlock()
-			break
-		}
-		ku.rMut.Unlock()
-
+	for ku.Alive.Value() {
 		c, err := ku.Listener.Accept()
-		if err != nil && !ku.Running {
+		if err != nil && !ku.Alive.Value() {
 			break
 		} else if err != nil {
 			Fatal(err)
@@ -75,7 +99,11 @@ func (ku *Kurafuto) Run() {
 			c.Close()
 			continue
 		}
+
+		// Thread-safe, ayy.
+		ku.mutex.Lock()
 		ku.Players = append(ku.Players, p)
+		ku.mutex.Unlock()
 
 		Infof("New connection from %s (%d clients)", c.RemoteAddr().String(), len(ku.Players))
 		Debugf("(%s) New connection from %s", p.Id, c.RemoteAddr().String())
@@ -91,16 +119,19 @@ func (ku *Kurafuto) Remove(p *Player) bool {
 		if player != p {
 			continue
 		}
+
 		p.Quit() // just in case
+
 		// Remove and zero player to allow GC to collect it.
 		copy(ku.Players[i:], ku.Players[i+1:])
 		ku.Players[len(ku.Players)-1] = nil
 		ku.Players = ku.Players[:len(ku.Players)-1]
+
 		f := "%s (%s) disconnected"
 		if p.Name == "" {
 			f = "%s(%s) disconnected"
 		}
-		Infof(f, p.Name, p.Remote())
+		Log(f, p.Name, p.Remote())
 		Debugf("(%s) %s disconnected from slot %d", p.Id, p.Remote(), i)
 		return true
 	}
@@ -118,16 +149,22 @@ func NewKurafuto(config *Config) (ku *Kurafuto, err error) {
 		return
 	}
 
+	done := make(chan bool, 1)
+
 	ku = &Kurafuto{
-		Players:  []*Player{},
-		mutex:    sync.Mutex{},
-		salt:     uniuri.New(),
+		Players: []*Player{},
+		mutex:   sync.Mutex{},
+
+		salt: uniuri.New(),
+
 		Hub:      &config.Servers[0],
 		Config:   config,
 		Listener: listener,
-		Done:     make(chan bool, 1),
 
-		rMut: sync.Mutex{},
+		Alive: NewSignal(),
+
+		done: done,
+		Done: done,
 	}
 	return
 }

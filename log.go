@@ -65,14 +65,14 @@ func Warnf(s string, v ...interface{}) {
 }
 
 func Debugf(s string, v ...interface{}) {
-	if verbosity < 2 {
+	if Verbosity < 2 {
 		return
 	}
 	log.Printf(debugColor+s+resetColor, v...)
 }
 
 func Infof(s string, v ...interface{}) {
-	if verbosity < 1 {
+	if Verbosity < 1 {
 		return
 	}
 	log.Printf(infoColor+s+resetColor, v...)

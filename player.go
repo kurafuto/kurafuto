@@ -71,6 +71,7 @@ func (p *Player) Remote() string {
 }
 
 func (p *Player) Quit() {
+	// TODO: Replace with kurafuto.Signal{} type.
 	p.qMutex.Lock()
 	if p.quit || p.quitting {
 		p.qMutex.Unlock()
