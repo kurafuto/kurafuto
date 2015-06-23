@@ -2,9 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/sysr-q/kyubu/classic"
-	"github.com/sysr-q/kyubu/cpe"
-	"github.com/sysr-q/kyubu/packets"
+	"github.com/kurafuto/kyubu/modern"
+	"github.com/kurafuto/kyubu/packets"
 	"strings"
 )
 

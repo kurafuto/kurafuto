@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dchest/uniuri"
-	"github.com/sysr-q/kyubu/packets"
+	"github.com/kurafuto/kyubu/packets"
 	"net"
 	"sync"
 	"time"
