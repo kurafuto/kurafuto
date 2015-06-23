@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/kurafuto/kyubu/modern"
+	"github.com/kurafuto/kyubu/modern/minimal"
 	"github.com/kurafuto/kyubu/packets"
 	"strings"
 )

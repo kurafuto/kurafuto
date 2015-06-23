@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/dchest/uniuri"
-	"github.com/kurafuto/kyubu/modern"
+	"github.com/kurafuto/kyubu/modern/minimal"
 	"github.com/kurafuto/kyubu/packets"
 )
 

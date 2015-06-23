@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/dchest/uniuri"
-	"github.com/kurafuto/kyubu/modern"
+	"github.com/kurafuto/kyubu/modern/minimal"
 )
 
 type Kurafuto struct {
