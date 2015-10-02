@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/dchest/uniuri"
-	"github.com/sysr-q/kyubu/classic"
+	"github.com/kurafuto/kyubu/modern/minimal"
 )
 
 // Signal is a type that embeds sync/atomic.Value; it's used to do thread-safe
